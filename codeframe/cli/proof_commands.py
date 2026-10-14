@@ -5,8 +5,9 @@ running obligations, managing waivers, and viewing status.
 """
 
 from datetime import date
+from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 import typer
 from rich.console import Console
@@ -14,6 +15,12 @@ from rich.markup import escape
 from rich.table import Table
 
 from codeframe.cli.helpers import cli_actor, print_error
+
+if TYPE_CHECKING:
+    from codeframe.core.proof.models import Gate, Requirement
+    from codeframe.core.workspace import Workspace
+
+_E = TypeVar("_E", bound=Enum)
 
 console = Console()
 
@@ -36,6 +43,57 @@ def _prompt_choice(text: str, choices: list[str], default: str) -> str:
         if answer in choices:
             return answer
         console.print(f"[red]Choose one of:[/red] {', '.join(choices)}")
+
+
+def _load_or_create_workspace(root: Path) -> "Workspace":
+    """Load the workspace at ``root``, creating it with a one-line notice (#1464)."""
+    from codeframe.core.workspace import CODEFRAME_DIR, create_or_load_workspace
+
+    existed = (root / CODEFRAME_DIR).is_dir()
+    try:
+        workspace = create_or_load_workspace(root)
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if not existed:
+        console.print("Created .codeframe/ in this repository.")
+    return workspace
+
+
+def _or_prompt(value: Optional[str], text: str) -> str:
+    return value or typer.prompt(text)
+
+
+def _choose(enum_cls: type[_E], label: str, value: Optional[str], default: str) -> _E:
+    """``value`` (prompted for when missing) as an ``enum_cls``; exit 1 if invalid."""
+    value = value or _prompt_choice(label, [e.value for e in enum_cls], default)
+    try:
+        return enum_cls(value)
+    except ValueError:
+        console.print(f"[red]Error:[/red] Invalid {label.lower()}: {escape(str(value))}")
+        raise typer.Exit(1)
+
+
+def _print_captured(req: "Requirement", stubs: "dict[Gate, Path]", repo_root: Path) -> None:
+    console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {escape(req.title)}")
+    console.print(f"  Glitch type: [cyan]{req.glitch_type.value if req.glitch_type else 'unknown'}[/cyan]")
+    console.print(f"  Obligations: {', '.join(o.gate.value for o in req.obligations)}")
+    console.print(f"  Scope files: {', '.join(req.scope.files) or 'none'}")
+    console.print(f"  Scope routes: {', '.join(req.scope.routes) or 'none'}")
+
+    _print_stubs(stubs, repo_root)
+
+
+def _print_stubs(stubs: "dict[Gate, Path]", repo_root: Path) -> None:
+    if not stubs:
+        return
+    console.print("\n[bold]Test stubs written:[/bold]")
+    for gate, path in stubs.items():
+        try:
+            shown = path.relative_to(repo_root)
+        except ValueError:
+            shown = path
+        console.print(f"  [cyan]{gate.value}[/cyan]: {shown}")
 
 
 @proof_app.command("capture")
@@ -67,49 +125,36 @@ def capture(
     Creates a REQ with proof obligations and generates test stubs.
     Interactive when run without arguments.
 
+    Works in any git repository: the workspace is created on first use,
+    so `cf init` is not required.
+
     Example:
         codeframe proof capture
         codeframe proof capture --title "Login rejects empty password" --severity high
     """
-    from codeframe.core.workspace import get_workspace
+    from codeframe.core.workspace import capture_workspace_root
     from codeframe.core.proof.models import Severity, Source
     from codeframe.core.proof.capture import capture_requirement
 
-    workspace_path = repo_path or Path.cwd()
     try:
-        workspace = get_workspace(workspace_path)
+        workspace_path = capture_workspace_root(repo_path or Path.cwd())
     except Exception as e:
         print_error(e)
         raise typer.Exit(1)
 
     # Interactive prompts for missing fields
-    if not title:
-        title = typer.prompt("What happened? (short title)")
-    if not description:
-        description = typer.prompt("Describe the issue (expected vs actual)")
-    if not where:
-        where = typer.prompt("Where? (file path, URL, API route, or component)")
-    if not severity:
-        severity = _prompt_choice("Severity", ["critical", "high", "medium", "low"], "medium")
-    if not source:
-        source = _prompt_choice(
-            "Source", ["production", "qa", "dogfooding", "monitoring", "user_report"], "qa"
-        )
-
-    try:
-        sev = Severity(severity)
-    except ValueError:
-        console.print(f"[red]Error:[/red] Invalid severity: {escape(str(severity))}")
-        raise typer.Exit(1)
-
-    try:
-        src = Source(source)
-    except ValueError:
-        console.print(f"[red]Error:[/red] Invalid source: {escape(str(source))}")
-        raise typer.Exit(1)
+    title = _or_prompt(title, "What happened? (short title)")
+    description = _or_prompt(description, "Describe the issue (expected vs actual)")
+    where = _or_prompt(where, "Where? (file path, URL, API route, or component)")
+    sev = _choose(Severity, "Severity", severity, "medium")
+    src = _choose(Source, "Source", source, "qa")
 
     def _scope_warning(message: str) -> None:
         console.print(f"[yellow]⚠[/yellow] {escape(message)}")
+
+    # Created only now, after the input is known good: a rejected capture
+    # must not leave an empty workspace behind (#1464).
+    workspace = _load_or_create_workspace(workspace_path)
 
     req, stubs = capture_requirement(
         workspace,
@@ -122,20 +167,7 @@ def capture(
         on_warning=_scope_warning,
     )
 
-    console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {escape(req.title)}")
-    console.print(f"  Glitch type: [cyan]{req.glitch_type.value if req.glitch_type else 'unknown'}[/cyan]")
-    console.print(f"  Obligations: {', '.join(o.gate.value for o in req.obligations)}")
-    console.print(f"  Scope files: {', '.join(req.scope.files) or 'none'}")
-    console.print(f"  Scope routes: {', '.join(req.scope.routes) or 'none'}")
-
-    if stubs:
-        console.print("\n[bold]Test stubs written:[/bold]")
-        for gate, path in stubs.items():
-            try:
-                shown = path.relative_to(workspace.repo_path)
-            except ValueError:
-                shown = path
-            console.print(f"  [cyan]{gate.value}[/cyan]: {shown}")
+    _print_captured(req, stubs, workspace.repo_path)
 
 
 @proof_app.command("run")

@@ -155,6 +155,9 @@ cf proof capture --title "add() is wrong for negatives" \
 cf proof run --full
 ```
 
+`cf proof capture` also works on its own in any git repository. It creates
+`.codeframe/` on first use, so you can start recording defects without `cf init`.
+
 **6. Ship**
 
 ```bash
