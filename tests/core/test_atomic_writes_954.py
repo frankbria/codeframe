@@ -712,6 +712,8 @@ def test_rotate_with_no_store_at_all_still_says_nothing_to_rotate(tmp_path, monk
     monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", "1")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("codeframe.core.credentials.DEFAULT_STORAGE_DIR", tmp_path / ".codeframe")
+    # The CLI loads ./.env with override, so a developer's key would refill the deleted var.
+    monkeypatch.chdir(tmp_path)
 
     result = CliRunner().invoke(app, ["auth", "rotate", "anthropic", "-v", "sk-ant-api03-abcdefghijklmnop", "--force"])
 
