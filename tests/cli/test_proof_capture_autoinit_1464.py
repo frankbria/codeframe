@@ -147,16 +147,17 @@ class TestCaptureCreatesItInTheRightPlace:
         assert result.exit_code == 0, result.output
         assert len(ledger.list_requirements(home_workspace)) == 1
 
+    @pytest.mark.parametrize("var", ["GIT_DIR", "GIT_COMMON_DIR"])
     def test_a_leaked_git_dir_does_not_redirect_the_capture(
-        self, tmp_path, git_repo, monkeypatch
+        self, tmp_path, git_repo, monkeypatch, var
     ):
-        """GIT_DIR left in the environment (a git hook, a wrapper script) names
-        some other repository; the ledger belongs to the one we are in (found
-        in review)."""
+        """A git-dir variable left in the environment (a git hook, a wrapper
+        script) names some other repository; the ledger belongs to the one we
+        are in (found in review)."""
         other = tmp_path / "other"
         other.mkdir()
         subprocess.run(["git", "init", "-q", str(other)], check=True)
-        monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+        monkeypatch.setenv(var, str(other / ".git"))
 
         result = _capture(git_repo)
 

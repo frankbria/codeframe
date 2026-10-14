@@ -1008,9 +1008,11 @@ def _git_roots(start: Path) -> Optional[tuple[Path, Path]]:
     it keeps its own top level.
     """
     # A caller's GIT_DIR (a git hook, a bare-dotfiles setup) would make
-    # --show-toplevel answer with the cwd instead of the repository.
+    # --show-toplevel answer with the cwd instead of the repository, and a
+    # GIT_COMMON_DIR would name another repository as the main work tree.
     env = os.environ.copy()
     env.pop("GIT_DIR", None)
+    env.pop("GIT_COMMON_DIR", None)
     env.pop("GIT_WORK_TREE", None)
     env.pop("GIT_INDEX_FILE", None)
     try:
