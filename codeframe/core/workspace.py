@@ -1020,6 +1020,8 @@ def _git_roots(start: Path) -> Optional[tuple[Path, Path]]:
             ["git", "-C", str(start), "rev-parse", "--show-toplevel", "--git-common-dir"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             env=env,
         )
