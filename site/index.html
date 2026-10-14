@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- COPY: title + description are the marketing-owned strings; replace freely. -->
+  <title>CodeFRAME — A project delivery system for AI-written software</title>
+  <meta name="description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
+
+  <!-- Open Graph / social card. og:image lives next to this file (1200x630). -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="CodeFRAME — A project delivery system for AI-written software">
+  <meta property="og:description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
+  <meta property="og:image" content="og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CodeFRAME — a project delivery system for AI-written software">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CodeFRAME — A project delivery system for AI-written software">
+  <meta name="twitter:description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release.">
+  <meta name="twitter:image" content="og-image.png">
+
+  <style>
+    /* Brand tokens mirror web-ui/src/app/globals.css (HSL 220 9%). */
+    :root {
+      --bg: #ffffff;
+      --fg: #14161a;
+      --muted: #676b73;
+      --card: #f4f4f6;
+      --border: #e4e5e9;
+      --grad: linear-gradient(90deg, #ec4899, #38bdf8);
+      --radius: 0.5rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e0f12;
+        --fg: #fafafa;
+        --muted: #a3a6ae;
+        --card: #16181c;
+        --border: #26282d;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+    }
+    main { max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+    header.hero { text-align: center; }
+    .logo {
+      display: inline-block;
+      width: 64px; height: 64px;
+      border-radius: 16px;
+      padding: 3px;
+      background: var(--grad);
+    }
+    .logo svg { display: block; width: 100%; height: 100%; }
+    h1 {
+      font-size: clamp(2rem, 6vw, 2.9rem);
+      line-height: 1.12;
+      margin: 1.25rem 0 0.6rem;
+      letter-spacing: -0.02em;
+    }
+    .tagline {
+      font-size: clamp(1.05rem, 3vw, 1.25rem);
+      color: var(--muted);
+      margin: 0 auto 1.5rem;
+      max-width: 34rem;
+    }
+    .demo { margin: 1.75rem auto 0; max-width: 640px; }
+    .demo img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #000;
+    }
+    .demo figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.6rem; }
+
+    h2 {
+      font-size: 1.35rem;
+      margin: 3rem 0 0.75rem;
+      letter-spacing: -0.01em;
+    }
+    section p { color: var(--muted); margin: 0.5rem 0; }
+    section a { color: var(--fg); }
+    section a:hover { text-decoration-thickness: 2px; }
+
+    .cards { display: grid; gap: 0.75rem; margin-top: 1rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.9rem 1rem;
+    }
+    .card .num { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.02em; }
+    .card .lab { color: var(--muted); font-size: 0.95rem; }
+    .card a { color: var(--fg); }
+
+    blockquote.limits {
+      margin: 1rem 0 0;
+      padding: 1rem 1.15rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 4px solid transparent;
+      border-image: var(--grad) 1;
+      border-radius: var(--radius);
+      color: var(--fg);
+    }
+    blockquote.limits p { color: var(--fg); margin: 0 0 0.5rem; }
+    blockquote.limits .src { font-size: 0.82rem; color: var(--muted); }
+
+    .contact { margin-top: 1rem; }
+    .big-link {
+      display: inline-block;
+      font-size: 1.1rem;
+      font-weight: 650;
+      color: var(--fg);
+      text-decoration: none;
+    }
+    .big-link:hover { text-decoration: underline; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      margin-top: 3.5rem;
+      padding-top: 1.25rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <!-- ================================================================
+         COPY: all marketing-owned strings are marked with "COPY:".
+         Replace text freely; layout and structure are intentional.
+         This page has NO JavaScript, NO forms, NO tracking, NO external
+         requests other than the two local images below (works from disk).
+         ================================================================ -->
+
+    <header class="hero">
+      <!-- COPY: logo mark (inline SVG, brand gradient). -->
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="img" aria-label="CodeFRAME logo">
+          <rect x="6" y="6" width="52" height="52" rx="12" fill="#16181c"/>
+          <circle cx="15" cy="15" r="2" fill="#3a3d44"/>
+          <circle cx="23" cy="15" r="2" fill="#3a3d44"/>
+          <circle cx="31" cy="15" r="2" fill="#3a3d44"/>
+          <path d="M22 30 l-6 6 6 6 M42 30 l6 6 -6 6 M37 22 l-10 26" stroke="#fafafa" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </span>
+
+      <!-- COPY: one sentence, for someone who has never heard of it (README Overview line). -->
+      <h1>A project delivery system for AI-written software.</h1>
+
+      <!-- COPY: README tagline (verbatim from README header). -->
+      <p class="tagline">CodeFRAME owns everything before and after the code:
+        requirements, task planning, verification and release.
+        The coding itself goes to the agent of your choice.</p>
+
+      <!-- COPY: demo GIF — the canonical asset, above the fold (docs/images/cli-tour.gif). -->
+      <figure class="demo">
+        <img src="../docs/images/cli-tour.gif" alt="Terminal session: cf init, cf prd add, cf tasks generate producing 18 tasks, cf tasks list with dependencies, cf proof capture, cf proof status" width="1280" height="720">
+        <figcaption>Sped up; the LLM wait is trimmed. Full walkthrough and command reference: the <a href="https://github.com/frankbria/codeframe/blob/main/docs/CLI_GUIDE.md">CLI guide</a>.</figcaption>
+      </figure>
+    </header>
+
+    <!-- COPY: who built it (README footer). -->
+    <section aria-labelledby="who">
+      <h2 id="who">Who built it</h2>
+      <p><a href="https://github.com/frankbria/codeframe">CodeFRAME</a> is built by
+        <a href="https://x.com/FrankBria18044">Frank Bria</a>. It is in public beta and open source
+        under <a href="https://github.com/frankbria/codeframe/blob/main/LICENSE">Apache-2.0</a>.</p>
+    </section>
+
+    <!-- COPY: proof of substance — figures are REAL current numbers (see CI, .coveragerc). -->
+    <section aria-labelledby="proof">
+      <h2 id="proof">Proof of substance</h2>
+      <div class="cards">
+        <div class="card">
+          <div class="num">7,869</div>
+          <div class="lab">tests pass in CI on the latest main run — the full non-e2e suite, real-LLM lifecycle tests excluded (2026-10-14).</div>
+        </div>
+        <div class="card">
+          <div class="num">80%</div>
+          <div class="lab">test-coverage floor, enforced by CI (<code>fail_under = 80</code>, mirrored by the README badge). Latest main run measured 87.36%.</div>
+        </div>
+      </div>
+      <p>Everything ships through a proven loop: requirements → task graph → delegated build →
+        <a href="https://github.com/frankbria/codeframe/blob/main/README.md#prove">PROOF9</a> verification →
+        merge that is blocked while a known problem is open. See the
+        <a href="https://github.com/frankbria/codeframe">repository</a> and the
+        <a href="https://github.com/frankbria/codeframe/blob/main/CHANGELOG.md">changelog</a>.</p>
+    </section>
+
+    <!-- COPY: limitations — VERBATIM from the README
+         (README.md, "> [!NOTE]" block, current beta disclaimer). Keep in sync with the README. -->
+    <section aria-labelledby="limits">
+      <h2 id="limits">Limitations</h2>
+      <blockquote class="limits">
+        <p><strong>CodeFRAME is in public beta (0.9.5).</strong> The Golden Path CLI
+          (<code>cf init/prd/tasks/work/proof/pr</code>) and the v2 API are stable enough to build on.
+          The web UI and anything marked in progress in the
+          <a href="https://github.com/frankbria/codeframe/blob/main/docs/PRODUCT_ROADMAP.md">roadmap</a>
+          are still moving, and on-disk <code>.codeframe/</code> formats may change between betas.</p>
+        <p class="src">Verbatim from the README. Rough edges:
+          <a href="https://github.com/frankbria/codeframe/issues/new/choose">report them here</a>.</p>
+      </blockquote>
+    </section>
+
+    <!-- COPY: contact — a conversation, not a capture form (issue: no waitlist / email-capture).
+         No calendar link is supplied by the repo yet; add one here when available. -->
+    <section aria-labelledby="contact">
+      <h2 id="contact">Talk to the builder</h2>
+      <p class="contact">Questions, beta access, or something that feels off?
+        Start a conversation at
+        <a class="big-link" href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>.</p>
+    </section>
+
+    <!-- COPY: trademark footer (verbatim from README footer). -->
+    <footer>
+      <p>CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.<br>
+      Licensed under <a href="https://github.com/frankbria/codeframe/blob/main/LICENSE">Apache-2.0</a>.</p>
+    </footer>
+  </main>
+</body>
+</html>
