@@ -1000,6 +1000,63 @@ def find_workspace_root(start: Path) -> Optional[Path]:
     return None
 
 
+def _git_roots(start: Path) -> Optional[tuple[Path, Path]]:
+    """``(top level of this work tree, root of the main work tree)``, or None.
+
+    The two differ only in a linked worktree, whose common dir is the main
+    repository's ``.git``. A submodule's common dir is not named ``.git``, so
+    it keeps its own top level.
+    """
+    # A caller's GIT_DIR (a git hook, a bare-dotfiles setup) would make
+    # --show-toplevel answer with the cwd instead of the repository.
+    env = os.environ.copy()
+    env.pop("GIT_DIR", None)
+    env.pop("GIT_WORK_TREE", None)
+    env.pop("GIT_INDEX_FILE", None)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = proc.stdout.splitlines()
+    if proc.returncode != 0 or len(lines) != 2:
+        return None
+    top = Path(lines[0]).resolve()
+    common = (start / lines[1]).resolve()  # relative to start unless absolute
+    return top, (common.parent if common.name == ".git" else top)
+
+
+def _enclosing_workspace(start: Path, roots: Optional[tuple[Path, Path]]) -> Optional[Path]:
+    """The workspace ``start`` is in, unless it belongs to some other project.
+
+    A workspace found above both git roots is another project's and is ignored.
+    """
+    existing = find_workspace_root(start)
+    if existing is None or roots is None:
+        return existing
+    in_repo = existing.is_relative_to(roots[0]) or existing.is_relative_to(roots[1])
+    return existing if in_repo else None
+
+
+def _refuse_home(start: Path, root: Path) -> None:
+    """``~/.codeframe`` is the machine-wide store, so home is never adopted.
+
+    A state.db there (a real workspace, or a pre-#1287 control plane) would
+    otherwise make every path under ``$HOME`` capture into one ledger. Naming
+    an existing home workspace exactly is still honoured.
+    """
+    if root == Path.home().resolve() and not (start == root and workspace_exists(root)):
+        raise FileNotFoundError(
+            f"Refusing to use the home directory ({root}) as a workspace. "
+            "Run this from inside a git repository."
+        )
+
+
 def capture_workspace_root(start: Path) -> Path:
     """Where a command that may create the workspace should put it (#1464).
 
@@ -1007,42 +1064,27 @@ def capture_workspace_root(start: Path) -> Path:
     workspace and split the repository's ledger in two.
 
     An enclosing workspace wins when it belongs to this repository. Otherwise
-    the git top level. A workspace found *above* the git top level is some
-    other project's and is not used.
+    the root of the main work tree, so a linked worktree (CodeFRAME's own task
+    worktrees included) shares the repository's ledger instead of growing one
+    that is deleted with the worktree.
 
     Raises:
         FileNotFoundError: ``start`` is neither inside a workspace nor inside a
-            git repository, or the root would be the home directory —
-            ``~/.codeframe`` is the machine-wide store, and a state.db there
-            makes every path under ``$HOME`` resolve to one workspace.
+            git repository, or the root would be the home directory.
     """
     start = start.resolve()
-    git_root: Optional[Path] = None
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            git_root = Path(proc.stdout.strip()).resolve()
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-    existing = find_workspace_root(start)
-    if existing is not None and (git_root is None or existing.is_relative_to(git_root)):
-        return existing
-    if git_root is None:
-        raise FileNotFoundError(
-            f"{start} is not inside a git repository. Run this from a git "
-            "repository, or create a workspace explicitly with `cf init`."
-        )
-    if git_root == Path.home().resolve():
-        raise FileNotFoundError(
-            f"Refusing to create a workspace in the home directory ({git_root})."
-        )
-    return git_root
+    roots = _git_roots(start)
+    root = _enclosing_workspace(start, roots)
+    if root is None:
+        if roots is None:
+            raise FileNotFoundError(
+                f"{start} is not inside a git repository (or git could not be "
+                "run). Run this from a git repository, or create a workspace "
+                "explicitly with `cf init`."
+            )
+        root = roots[1]
+    _refuse_home(start, root)
+    return root
 
 
 def get_workspace(repo_path: Path) -> Workspace:

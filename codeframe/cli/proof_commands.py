@@ -6,7 +6,7 @@ running obligations, managing waivers, and viewing status.
 
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 from rich.console import Console
@@ -14,6 +14,9 @@ from rich.markup import escape
 from rich.table import Table
 
 from codeframe.cli.helpers import cli_actor, print_error
+
+if TYPE_CHECKING:
+    from codeframe.core.workspace import Workspace
 
 console = Console()
 
@@ -36,6 +39,21 @@ def _prompt_choice(text: str, choices: list[str], default: str) -> str:
         if answer in choices:
             return answer
         console.print(f"[red]Choose one of:[/red] {', '.join(choices)}")
+
+
+def _load_or_create_workspace(root: Path) -> "Workspace":
+    """Load the workspace at ``root``, creating it with a one-line notice (#1464)."""
+    from codeframe.core.workspace import CODEFRAME_DIR, create_or_load_workspace
+
+    existed = (root / CODEFRAME_DIR).is_dir()
+    try:
+        workspace = create_or_load_workspace(root)
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if not existed:
+        console.print("Created .codeframe/ in this repository.")
+    return workspace
 
 
 @proof_app.command("capture")
@@ -74,11 +92,7 @@ def capture(
         codeframe proof capture
         codeframe proof capture --title "Login rejects empty password" --severity high
     """
-    from codeframe.core.workspace import (
-        capture_workspace_root,
-        create_or_load_workspace,
-        find_workspace_root,
-    )
+    from codeframe.core.workspace import capture_workspace_root
     from codeframe.core.proof.models import Severity, Source
     from codeframe.core.proof.capture import capture_requirement
 
@@ -119,14 +133,7 @@ def capture(
 
     # Created only now, after the input is known good: a rejected capture
     # must not leave an empty workspace behind (#1464).
-    created = find_workspace_root(workspace_path) != workspace_path
-    try:
-        workspace = create_or_load_workspace(workspace_path)
-    except Exception as e:
-        print_error(e)
-        raise typer.Exit(1)
-    if created:
-        console.print("Created .codeframe/ in this repository.")
+    workspace = _load_or_create_workspace(workspace_path)
 
     req, stubs = capture_requirement(
         workspace,

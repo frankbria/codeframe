@@ -119,6 +119,49 @@ class TestCaptureCreatesItInTheRightPlace:
         assert result.exit_code == 1
         assert not (git_repo / ".codeframe" / "state.db").exists()
 
+    def test_a_workspace_already_in_home_is_not_adopted_from_below(
+        self, tmp_path, monkeypatch
+    ):
+        """A state.db in ~/.codeframe must not turn every folder under $HOME
+        into one workspace (found in review)."""
+        home = tmp_path / "home"
+        (home / "notes").mkdir(parents=True)
+        home_workspace = create_or_load_workspace(home)
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        result = _capture(home / "notes")
+
+        assert result.exit_code == 1
+        assert ledger.list_requirements(home_workspace) == []
+
+    def test_an_existing_home_workspace_named_exactly_still_works(
+        self, tmp_path, monkeypatch
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        home_workspace = create_or_load_workspace(home)
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        result = _capture(home)
+
+        assert result.exit_code == 0, result.output
+        assert len(ledger.list_requirements(home_workspace)) == 1
+
+    def test_git_dir_in_the_environment_does_not_move_the_root(
+        self, git_repo, monkeypatch
+    ):
+        """Inside a git hook GIT_DIR is set, and git then reports the cwd as
+        the top level (found in review)."""
+        sub = git_repo / "src"
+        sub.mkdir()
+        monkeypatch.setenv("GIT_DIR", str(git_repo / ".git"))
+
+        result = _capture(sub)
+
+        assert result.exit_code == 0, result.output
+        assert (git_repo / ".codeframe" / "state.db").is_file()
+        assert not (sub / ".codeframe").exists()
+
     def test_a_rejected_capture_leaves_nothing_behind(self, git_repo):
         args = [a if a != "high" else "catastrophic" for a in _ARGS]
 
@@ -126,6 +169,60 @@ class TestCaptureCreatesItInTheRightPlace:
 
         assert result.exit_code == 1
         assert not (git_repo / ".codeframe").exists()
+
+
+def _add_worktree(repo: Path, worktree: Path) -> None:
+    git = ["git", "-C", str(repo), "-c", "user.email=t@example.com", "-c", "user.name=t"]
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    subprocess.run([*git, "worktree", "add", "-q", str(worktree)], check=True)
+
+
+class TestWorktreesShareTheRepositoryLedger:
+    """A ledger created inside a worktree is deleted with it (found in review)."""
+
+    def test_a_task_worktree_captures_into_the_main_workspace(self, git_repo):
+        workspace = create_or_load_workspace(git_repo)
+        worktree = git_repo / ".codeframe" / "worktrees" / "task1"
+        _add_worktree(git_repo, worktree)
+
+        result = _capture(worktree)
+
+        assert result.exit_code == 0, result.output
+        assert not (worktree / ".codeframe").exists()
+        assert len(ledger.list_requirements(workspace)) == 1
+
+    def test_a_worktree_of_an_uninitialised_repo_creates_at_the_main_root(
+        self, tmp_path, git_repo
+    ):
+        worktree = tmp_path / "wt"
+        _add_worktree(git_repo, worktree)
+
+        result = _capture(worktree)
+
+        assert result.exit_code == 0, result.output
+        assert (git_repo / ".codeframe" / "state.db").is_file()
+        assert not (worktree / ".codeframe").exists()
+
+    def test_a_worktree_with_its_own_workspace_keeps_it(self, tmp_path, git_repo):
+        worktree = tmp_path / "wt"
+        _add_worktree(git_repo, worktree)
+        own = create_or_load_workspace(worktree)
+
+        result = _capture(worktree)
+
+        assert result.exit_code == 0, result.output
+        assert len(ledger.list_requirements(own)) == 1
+        assert not (git_repo / ".codeframe").exists()
+
+
+class TestTheNotice:
+    def test_no_notice_when_the_directory_was_already_there(self, git_repo):
+        (git_repo / ".codeframe").mkdir()
+
+        result = _capture(git_repo)
+
+        assert result.exit_code == 0, result.output
+        assert NOTICE not in result.output
 
 
 class TestOnlyCaptureCreates:
