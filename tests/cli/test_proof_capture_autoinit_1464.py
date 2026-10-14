@@ -147,20 +147,22 @@ class TestCaptureCreatesItInTheRightPlace:
         assert result.exit_code == 0, result.output
         assert len(ledger.list_requirements(home_workspace)) == 1
 
-    def test_git_dir_in_the_environment_does_not_move_the_root(
-        self, git_repo, monkeypatch
+    def test_a_leaked_git_dir_does_not_redirect_the_capture(
+        self, tmp_path, git_repo, monkeypatch
     ):
-        """Inside a git hook GIT_DIR is set, and git then reports the cwd as
-        the top level (found in review)."""
-        sub = git_repo / "src"
-        sub.mkdir()
-        monkeypatch.setenv("GIT_DIR", str(git_repo / ".git"))
+        """GIT_DIR left in the environment (a git hook, a wrapper script) names
+        some other repository; the ledger belongs to the one we are in (found
+        in review)."""
+        other = tmp_path / "other"
+        other.mkdir()
+        subprocess.run(["git", "init", "-q", str(other)], check=True)
+        monkeypatch.setenv("GIT_DIR", str(other / ".git"))
 
-        result = _capture(sub)
+        result = _capture(git_repo)
 
         assert result.exit_code == 0, result.output
         assert (git_repo / ".codeframe" / "state.db").is_file()
-        assert not (sub / ".codeframe").exists()
+        assert not (other / ".codeframe").exists()
 
     def test_a_rejected_capture_leaves_nothing_behind(self, git_repo):
         args = [a if a != "high" else "catastrophic" for a in _ARGS]
