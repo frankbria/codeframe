@@ -1,6 +1,6 @@
 # Directory Structure
 
-*Last Updated: 2026-10-11*
+*Last Updated: 2026-10-14*
 
 Layer-based Python package plus a separate Next.js app.
 
@@ -38,5 +38,6 @@ web-ui/src/
 tests/                    # core/, cli/, ui/, adapters/, integration/, lifecycle/, e2e/, ci/, …
 docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, CLI/WEB_UI guides, images/
 scripts/                  # lifecycle runner, quickstart-cleanroom/, ci/ helpers, verify scripts
+site/                     # Static codeframe.sh page (no build, no JS); make-og-image.sh rebuilds the card
 deploy/                   # Caddyfile.example, backup-db.sh, README.md (runbook)
 ```
