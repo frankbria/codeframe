@@ -53,6 +53,13 @@ still open.
 The result is a closed loop: a bug found in production becomes a requirement,
 and that requirement is checked on every build that follows.
 
+Other tools remember what your reviewers prefer. CodeFRAME remembers what
+actually broke, and proves it stays fixed: evidence is checksummed and bound to
+the run and gate that produced it, a run that verified nothing is reported as
+vacuous rather than green, and every waiver records who approved it, why, and
+(when set) when it expires. Where each of those lives in the code is listed in
+[VISION.md](docs/VISION.md#prove-is-the-output-any-good).
+
 > [!NOTE]
 > **CodeFRAME is in public beta (`0.9.5`).** The Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) and the v2 API are stable enough to build
