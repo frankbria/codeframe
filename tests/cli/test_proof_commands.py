@@ -335,6 +335,23 @@ class TestWaive:
         assert result.exit_code == 0, result.output
         assert ledger.get_requirement(workspace, "REQ-0001").waiver.approved_by == "alice"
 
+    def test_show_names_who_approved_the_waiver(self, ws_with_req, monkeypatch):
+        """The docs call a waiver attributable and point at `cf proof show` to
+        check it (#1466), so show must print the recorded actor."""
+        _, workspace_path = ws_with_req
+        monkeypatch.setattr("getpass.getuser", lambda: "alice")
+        runner.invoke(app, [
+            "proof", "waive", "REQ-0001", "-w", str(workspace_path),
+            "--reason", "Accepted risk", "--expires", "2027-01-01",
+        ])
+
+        result = runner.invoke(app, ["proof", "show", "REQ-0001", "-w", str(workspace_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "Reason: Accepted risk" in result.output
+        assert "Expires: 2027-01-01" in result.output
+        assert "Approved by: alice" in result.output
+
     def test_waive_without_expiry(self, ws_with_req):
         """waive without --expires should still succeed."""
         workspace, workspace_path = ws_with_req

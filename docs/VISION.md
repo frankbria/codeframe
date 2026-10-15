@@ -1,6 +1,6 @@
 # CodeFRAME Vision: Think, Build, Prove, Ship
 
-Last updated: 2026-03-07
+Last updated: 2026-10-15
 
 This document is the north star for CodeFRAME. It is not a roadmap, a spec, or a task list. It describes where the project is going and why. Tactical decisions should be evaluated against this vision.
 
@@ -41,7 +41,7 @@ CodeFRAME's THINK layer is a structured process for going from "I have an idea" 
 
 3. **Atomic task decomposition** -- The output is a tree of tasks where every leaf is small enough for an agent to execute in a single session. Each leaf carries its full lineage -- the chain of parent goals that explains *why* this task exists and *what it is part of*. That context prevents scope drift during execution.
 
-Nobody else does this. Gastown assumes issues exist. Symphony just dispatches. Fractals decomposes but has no requirements layer. CodeFRAME generates the work, stress-tests the spec, and decomposes into atomic units -- all before a single line of code is written.
+Among the orchestration tools we compare against below, none covers this layer end to end: Gastown assumes issues exist, Symphony dispatches, and Fractals decomposes but has no requirements layer. CodeFRAME generates the work (`cf prd generate`), stress-tests the spec (`cf prd stress-test`), and decomposes it into dependency-ordered tasks (`cf tasks generate`) -- all before a single line of code is written. That is a statement about those tools, not about every tool: spec-first workflows exist elsewhere, and the claim we stand behind is the combination with PROVE below, not any one step.
 
 ### BUILD: Delegate to the best agent
 
@@ -61,7 +61,7 @@ The built-in ReAct agent remains as a fallback for environments without access t
 
 ### PROVE: Is the output any good?
 
-This is where CodeFRAME introduces something genuinely new: **quality memory**.
+This is where CodeFRAME's differentiation is sharpest: **quality memory** -- of defects, not of preferences.
 
 Traditional quality processes are amnesiac. They test what someone remembered to write tests for. If a bug slips through and gets fixed, the fix might include a test -- or it might not. There is no systematic mechanism to ensure that every failure becomes a permanent proof obligation.
 
@@ -81,11 +81,25 @@ PROOF9 is that mechanism. It has two parts:
 | DEMO | Feature demonstrably works |
 | MANUAL | Human-verified (tracked waiver with expiry) |
 
-Not every task triggers all nine gates. The system uses scope selectors (routes, components, APIs, files) to determine which requirements intersect with the current change and runs only the relevant obligations.
+Every gate except MANUAL is verified by running the named tests its obligations carry (one `pytest` subprocess per test, so a missing test fails rather than passing silently); UNIT and CONTRACT fall back to the whole suite when no test is named, and SEC also runs `bandit`. An obligation with nothing runnable is recorded UNVERIFIABLE, never as a pass, and MANUAL is closed by a tracked waiver rather than a run. Not every task triggers all nine gates. The system uses scope selectors (routes, components, APIs, files) to determine which requirements intersect with the current change and runs only the relevant obligations.
 
 **The closed loop.** When a glitch is found -- in production, QA, dogfooding, or monitoring -- it is captured as a *Requirement* (REQ) with attached proof obligations. From that point forward, every build that touches the REQ's scope must produce evidence satisfying those obligations. The REQ can never be silently dropped. It can be waived (with a reason and an expiry date), but the waiver itself is tracked.
 
 This is quality compounding interest. Over time, the system becomes harder to break in the ways you have already been burned.
+
+**What "memory" means here, precisely.** Several review tools now persist what they learn across pull requests -- reviewer preferences, style rules, recurring comments -- and some gate merges on checks an LLM judges. That is memory of *opinion*. PROOF9 remembers *defects*: a captured glitch becomes a scoped requirement whose obligations are re-run, by a tool rather than judged by a model, on every proof run whose change touches its scope.
+
+> Other tools remember what your reviewers prefer. CodeFRAME remembers what actually broke, and proves it stays fixed.
+
+The audit properties behind that sentence are true today and each can be checked:
+
+| Property | Where to check it |
+|---|---|
+| Evidence is SHA-256 checksummed **and bound to the run and gate that produced it**, so a passing artifact cannot be transplanted into another run; a mismatch is a hard tamper state, and the merge gate blocks a SATISFIED requirement whose evidence no longer verifies | `codeframe/core/proof/evidence.py` (`_bound_digest`, `verify_evidence`); `verified` field on `GET /api/v2/proof/runs/{run_id}/evidence` |
+| A run that verified nothing is **reported as vacuous**, not as a green pass | `ProofRun.vacuous_pass` (`codeframe/core/proof/models.py`); the proof report in `cf pr create` reads "verified nothing (no gate ran)"; `cf proof run` exits 2 when gates were disabled or a requirement has no obligations |
+| A waiver records **who** (`approved_by`, taken from the authenticated principal or the OS user -- never from the request body), **why** (a required reason) and, when given, **until when** (an expiry date, after which the waiver blocks the merge again) | `cf proof waive <REQ> --reason "..." --expires YYYY-MM-DD`; `cf proof show <REQ>`; `ledger.waiver_expired` |
+| Verification is a **tool's exit code, not an LLM's opinion**: each obligation's named tests run in their own `pytest` subprocess (a test that does not exist fails the obligation), UNIT/CONTRACT fall back to the whole suite when none is named, SEC also runs `bandit`, and a tool that did not run is not a pass; an obligation with nothing runnable is reported UNVERIFIABLE, never counted as a pass | `_run_gate` and `_GATE_TO_CORE` in `codeframe/core/proof/runner.py`; `cf proof run` |
+| Obligations are **scoped**: a requirement is re-checked only when a change intersects its routes, files, APIs or components, and the merge gate is scoped to the PR's changed files | `codeframe/core/proof/scope.py` (`intersects`); `cf proof run`; `cf pr merge` |
 
 ### SHIP: Deploy with confidence
 
@@ -130,8 +144,11 @@ The sweet spot is the developer who today uses Claude Code or Cursor for individ
 | Decomposer | Fractals | Recursive classify/decompose | CodeFRAME incorporates this + PRD + verification |
 | CI/CD | GitHub Actions, Jenkins | Run tests, deploy | CodeFRAME produces artifacts for these |
 | Quality | SonarQube, Codecov | Static analysis, coverage | PROOF9 is requirements-driven, not metric-driven |
+| AI code review | Review bots with learned rules | Persist reviewer preferences across PRs; LLM-judged merge checks | PROOF9 persists defects as scoped, tool-verified obligations |
 
-CodeFRAME's unique position: the only tool that connects **ideation** (PRD generation, recursive decomposition, ambiguity surfacing) to **execution** (agent-agnostic, verification-wrapped) to **quality memory** (evidence-based, closed-loop, compounding). Nobody else does all three.
+CodeFRAME's position: it connects **ideation** (PRD generation, recursive decomposition, ambiguity surfacing) to **execution** (agent-agnostic, verification-wrapped) to **quality memory** (evidence-based, closed-loop, compounding). Each layer has neighbours; the claim is the connection, and in particular the last link.
+
+The precise version of that last link: AI review tools persist reviewer preferences and gate merges on LLM-judged checks; none of the tools we have compared converts a captured defect into a scoped obligation that a tool re-verifies, with an expiring, attributable waiver. That sentence is narrower than "nobody else does this" on purpose: it names what we compared against rather than claiming the whole market, and every part of the CodeFRAME side of it is checkable in the table under PROVE.
 
 ---
 

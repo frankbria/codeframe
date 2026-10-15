@@ -499,6 +499,12 @@ def show(
         console.print(f"  Reason: {req.waiver.reason}")
         if req.waiver.expires:
             console.print(f"  Expires: {req.waiver.expires}")
+        # The actor is the point of an attributable waiver (#1466): it was
+        # recorded but only the API surfaced it.
+        if req.waiver.approved_by:
+            console.print(f"  Approved by: {escape(req.waiver.approved_by)}")
+        if req.waiver.waived_at:
+            console.print(f"  Waived at: {req.waiver.waived_at}")
 
     # Show evidence
     evidence_list = ledger.list_evidence(workspace, req.id)
