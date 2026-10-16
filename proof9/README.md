@@ -14,7 +14,7 @@ uv tool install codeframe-ai
 | Command | What it does |
 |---|---|
 | `/proof <what went wrong>` | Captures a requirement (`cf proof capture`) scoped to the whole repository, with test stubs for its obligations |
-| `/proof` | The same, using the text you selected in the transcript (a stack trace, say) |
+| `/proof` | The same, using the text you selected in the transcript (a stack trace, say). With nothing selected, opens the ledger pane |
 | `/proof ratchet [--dry-run]` | Locks in every test that passes today (`cf proof ratchet`) |
 
 Captures work in any git repository; the first one creates `.codeframe/`.
@@ -46,6 +46,15 @@ is everything the commit can contain and possibly more. It can check more than
 the commit, never less, so an unstaged change that breaks a requirement is
 reported (and, in block mode, blocks the commit) even though it is not being
 committed. Commits made outside Claude's Bash tool are not checked.
+
+## The ledger pane
+
+`/proof` with nothing typed or selected opens a pane beside the transcript: every
+requirement with its status (failing first; a symbol and a word each, never
+color alone), a run-history strip (green passed, red failed, yellow verified
+nothing) and the last run. Select a requirement for its scope, obligations,
+evidence with checksums and waiver. **Run proof**, **Run full**, and on a
+failing requirement **Ask Claude to fix**.
 
 ## The band above the prompt
 

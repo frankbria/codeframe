@@ -20,12 +20,13 @@ requirement, a suite that cannot run) writes nothing to stdout.
 
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence
 
 from codeframe.core.proof.models import (
     Evidence,
     Gate,
     GateOutcome,
+    ProofRun,
     ReqStatus,
     Requirement,
     Source,
@@ -101,6 +102,16 @@ def is_failing(req: Requirement) -> bool:
     return req.status != ReqStatus.WAIVED and any(o.status == "failed" for o in req.obligations)
 
 
+def run_summary(run: ProofRun) -> dict:
+    return {
+        "run_id": run.run_id,
+        "started_at": _iso(run.started_at),
+        "passed": run.overall_passed,
+        "vacuous": run.vacuous_pass,
+        "duration_ms": run.duration_ms,
+    }
+
+
 def status_document(reqs: list[Requirement], expired: list[Requirement]) -> dict:
     counts = {"total": len(reqs), "open": 0, "satisfied": 0, "waived": 0, "failing": 0, "locked": 0}
     for req in reqs:
@@ -108,6 +119,16 @@ def status_document(reqs: list[Requirement], expired: list[Requirement]) -> dict
         counts["failing"] += is_failing(req)
         counts["locked"] += req.source == Source.RATCHET
     return {"counts": counts, "expired_waivers": [r.id for r in expired]}
+
+
+def list_document(reqs: list[Requirement], runs: Sequence[ProofRun]) -> dict:
+    """``cf proof list --json``: the requirements and, newest first, recent runs
+    (#1491). Read-only — unlike ``status``, which reverts expired waivers — so the
+    proof9 pane can read the ledger without changing it."""
+    return {
+        "requirements": [requirement_to_dict(r) for r in reqs],
+        "runs": [run_summary(r) for r in runs],
+    }
 
 
 def capture_document(

@@ -636,9 +636,9 @@ def list_reqs(
     reqs = ledger.list_requirements(workspace, status=status_filter)
 
     if as_json:
-        from codeframe.core.proof.serialize import requirement_to_dict
+        from codeframe.core.proof.serialize import list_document
 
-        _emit({"requirements": [requirement_to_dict(r) for r in reqs]})
+        _emit(list_document(reqs, ledger.list_runs(workspace, limit=20)))
         return
     if not reqs:
         console.print("No requirements found.")

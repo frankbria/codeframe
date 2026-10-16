@@ -50,6 +50,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   tool (`mcp__proof9__capture`) over `cf proof capture`, and in a repository
   with a ledger adds a short system-prompt section: offer a capture after
   fixing a regression; when a requirement fails, fix the code, not the test.
+- **proof9's `/proof` pane** (#1491). `/proof` with nothing typed or selected
+  opens the ledger beside the transcript: statuses (failing first), run
+  history and the last run, a requirement's evidence with checksums, and Run
+  proof / Run full / Ask Claude to fix. It replaces the web UI's proof pages.
+  `cf proof list --json` now includes the 20 most recent `runs` (read-only).
 - **Install proof9 from this repository** (#1471):
   `/plugin install proof9 --marketplace frankbria/codeframe`. The repo root
   carries the marketplace file, and CI validates, tests and type-checks the

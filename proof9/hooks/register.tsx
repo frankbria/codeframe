@@ -1,13 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Failing } from '../types'
+import type { Failing, LedgerRequirement, RunSummary } from '../types'
 import { isGitCommit, runsCfProof } from './commit.ts'
 
 const failingAtom = atom({ plugin: 'proof9', key: 'failing' } as const, [])
 const dismissedAtom = atom({ plugin: 'proof9', key: 'dismissed' } as const, [])
 const emptyAtom = atom({ plugin: 'proof9', key: 'emptyLedger' } as const, false)
 const waivingAtom = atom({ plugin: 'proof9', key: 'waiving' } as const, null)
+const ledgerAtom = atom({ plugin: 'proof9', key: 'ledger' } as const, [])
+const runsAtom = atom({ plugin: 'proof9', key: 'runs' } as const, [])
+const selectedAtom = atom({ plugin: 'proof9', key: 'selected' } as const, null)
+const detailAtom = atom({ plugin: 'proof9', key: 'detail' } as const, null)
+const PANE = 'proof9'
 
 // The CLI is the product; this plugin is a front door. Every call is `cf … --json`
 // by argv (no shell), and nothing here repeats what the CLI decides.
@@ -237,16 +242,7 @@ async function checkVersion($: EngineInterface): Promise<boolean> {
   return true
 }
 
-type Listed = {
-  requirements: {
-    id: string
-    title: string
-    status: string
-    obligations: { gate: string; status: string }[]
-    evidence_rules: { test_id: string; gate: string | null }[]
-    waiver: { expired: boolean } | null
-  }[]
-}
+type Listed = { requirements: LedgerRequirement[]; runs?: RunSummary[] }
 
 const failureKey = (f: Failing) => `${f.id}:${f.tests.join(',')}`
 
@@ -272,22 +268,106 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   // Failing as `cf proof status` counts it (#1488): not waived, a failed obligation.
   // A lapsed waiver no longer covers it — read-only, as the merge gate decides
   // (#1276); `list`, unlike `status`, does not revert the stored status.
-  const waived = (r: Listed['requirements'][number]) => r.status === 'waived' && !r.waiver?.expired
-  const failing: Failing[] = reqs
-    .filter(r => !waived(r) && r.obligations.some(o => o.status === 'failed'))
-    .map(r => {
-      const gates = r.obligations.filter(o => o.status === 'failed').map(o => o.gate)
-      const tests = r.evidence_rules.filter(t => t.gate !== null && gates.includes(t.gate)).map(t => t.test_id)
-      return { id: r.id, title: r.title, tests: tests.length ? tests : gates.map(g => `the ${g} gate (no named test)`) }
-    })
+  const failing: Failing[] = reqs.filter(isFailing).map(toFailing)
   const noun = reqs.length === 1 ? 'obligation' : 'obligations'
   $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
   await update($, failingAtom, () => failing)
+  await update($, ledgerAtom, () => reqs)
+  if (doc.runs) await update($, runsAtom, () => doc.runs ?? [])
   // A dismissal ends with its failure, so a later regression shows again.
   const live = new Set(failing.map(failureKey))
   await update($, dismissedAtom, keys => keys.filter(k => live.has(k)))
   const hidden = Boolean(await attempt(async () => $.store.get(await emptyHiddenKey($))))
   await update($, emptyAtom, () => reqs.length === 0 && !hidden)
+}
+
+function toFailing(r: LedgerRequirement): Failing {
+  const gates = r.obligations.filter(o => o.status === 'failed').map(o => o.gate)
+  const tests = r.evidence_rules.filter(t => t.gate !== null && gates.includes(t.gate)).map(t => t.test_id)
+  return { id: r.id, title: r.title, tests: tests.length ? tests : gates.map(g => `the ${g} gate (no named test)`) }
+}
+
+const isWaived = (r: LedgerRequirement) => r.status === 'waived' && !r.waiver?.expired
+/** Failing as `cf proof status` counts it (#1488); a lapsed waiver no longer covers it (#1276). */
+const isFailing = (r: LedgerRequirement) => !isWaived(r) && r.obligations.some(o => o.status === 'failed')
+
+
+/** One pane row: a symbol and a word per status, so none is told apart by color alone. */
+function rowLabel(r: LedgerRequirement): string {
+  const mark = r.status === 'waived' && r.waiver?.expired ? `! waiver expired${isFailing(r) ? ' · FAILING' : ''}`
+    : isFailing(r) ? '✗ FAILING'
+      : r.status === 'waived' ? '– waived'
+        : r.status === 'satisfied' ? '✓ satisfied'
+          : '○ open'
+  return `${mark}  ${r.id}  ${r.title}`
+}
+
+const rowOrder = (r: LedgerRequirement) =>
+  isFailing(r) ? 0 : r.status === 'open' ? 1 : r.status === 'satisfied' ? 2 : 3
+
+/** Ledger text made safe inside the plugin's Markdown: on one line, so it can never start a
+ *  block (a rule, heading or list), with mid-line markup characters escaped. Shown, never rendered. */
+const md = (text: string) => text.replace(/\s*\n\s*/g, ' ').replace(/([\\`*_[\]()#|<>~])/g, '\\$1')
+
+type Shown = {
+  requirement: LedgerRequirement & {
+    severity: string
+    source: string
+    scope: Record<string, string[]>
+    waiver: { reason: string; expires: string | null; expired: boolean; approved_by: string } | null
+  }
+  evidence: { gate: string; status: string; artifact_checksum: string; run_id: string; timestamp: string | null }[]
+}
+
+async function selectRequirement($: EngineInterface, id: string): Promise<void> {
+  await update($, selectedAtom, () => id)
+  await update($, detailAtom, () => null) // no previous detail under the new row
+  const ran = await cf($, ['proof', 'show', id, '--json'])
+  // A later selection that answered first wins: never show one requirement's
+  // evidence under another's name.
+  if ((await read($, selectedAtom)) !== id) return
+  const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<Shown>(ran)
+  if (!doc) {
+    await update($, detailAtom, () => `Could not read ${md(id)}: ${md('failed' in ran ? ran.failed : errorText(ran))}`)
+    return
+  }
+  const r = doc.requirement
+  const scope = Object.entries(r.scope).filter(([, v]) => v.length).map(([k, v]) => `${k}: ${v.map(md).join(', ')}`)
+  const lines = [
+    `**${md(r.id)}** — ${md(r.title)}`,
+    `Status: ${md(r.status)} · severity ${md(r.severity)} · source ${md(r.source)}`,
+    `Scope: ${scope.join('; ') || 'none'}`,
+    `Obligations: ${r.obligations.map(o => `${md(o.gate)} ${md(o.status)}`).join(', ') || 'none'}`,
+    '',
+    doc.evidence.length ? '**Evidence**' : 'No evidence recorded yet.',
+    ...doc.evidence.slice(0, 10).map(e =>
+      `- ${md(e.gate)} **${md(e.status)}** · checksum \`${e.artifact_checksum}\` · run ${md(e.run_id)} · ${md(e.timestamp ?? '')}`),
+  ]
+  if (r.waiver) {
+    lines.push('', `**Waiver** (${r.waiver.expired ? 'expired' : 'in force'}): ${md(r.waiver.reason)}` +
+      ` · approved by ${md(r.waiver.approved_by || 'unknown')}${r.waiver.expires ? ` · expires ${md(r.waiver.expires)}` : ''}`)
+  }
+  await update($, detailAtom, () => lines.join('\n'))
+}
+
+/** One cell per run, oldest first: green passed, red failed, yellow verified nothing. */
+function historyCells(runs: RunSummary[], columns: number): string {
+  const shown = runs.slice(0, columns).reverse()
+  const words = new Uint32Array(shown.length * 3)
+  shown.forEach((run, i) => {
+    words.set([0x2588, run.vacuous ? 0xccaa00 : run.passed ? 0x22aa55 : 0xdd3333, 0x01000000], i * 3)
+  })
+  let binary = ''
+  for (const byte of new Uint8Array(words.buffer)) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+async function runProof($: EngineInterface, full: boolean): Promise<void> {
+  const ran = await cf($, ['proof', 'run', ...(full ? ['--full'] : []), '--json'], 600_000)
+  if ('failed' in ran) $.ui.toast(cannotRun(ran.failed).replace(/\n/g, ' '))
+  await refreshLedger($)
+  const selected = await read($, selectedAtom)
+  if (selected) await selectRequirement($, selected)
 }
 
 /** Appends a notice to the transcript: the person reads it, the model does not. */
@@ -455,7 +535,8 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) return next(e)
     const table = $.ui.resolve(e)
     const { Box, Button, Text } = table
-    const Input = 'Input' in table ? table.Input : undefined
+    // Mobile has no Input (the API's surface tables): no waive form there.
+    const Input = e.surface !== 'mobile' ? $.ui.resolve(e).Input : undefined
     const dismissed = await read($, dismissedAtom)
     const shown = (await read($, failingAtom)).filter(f => !dismissed.includes(failureKey(f)))
     const first = shown[0]
@@ -523,13 +604,70 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const table = $.ui.resolve(e)
+    const { Box, Button, Markdown, Text } = table
+    // Raster is the terminal's alone (the API's surface tables); others get text.
+    const Raster = e.surface === 'terminal' ? $.ui.resolve(e).Raster : undefined
+    const ledger = [...(await read($, ledgerAtom))].sort((a, b) => rowOrder(a) - rowOrder(b))
+    const runs = await read($, runsAtom)
+    const selected = await read($, selectedAtom)
+    const detail = await read($, detailAtom)
+    const failing = ledger.filter(isFailing)
+    const last = runs[0]
+    const lastWord = !last ? '' : last.vacuous ? 'passed with nothing verified' : last.passed ? 'passed' : 'FAILED'
+    const columns = Math.max(1, Math.min(runs.length, e.props.bodyColumns - 2))
+    const chosen = ledger.find(r => r.id === selected)
+    return (
+      <Box flexDirection="column">
+        <Text bold>
+          PROOF9 ledger · {ledger.length} {ledger.length === 1 ? 'obligation' : 'obligations'} · {failing.length} failing
+        </Text>
+        {runs.length && Raster ? <Raster key="history" columns={columns} rows={1} cells={historyCells(runs, columns)} /> : null}
+        {runs.length && !Raster ? (
+          <Text>{runs.slice(0, columns).reverse().map(r => (r.vacuous ? '○' : r.passed ? '✓' : '✗')).join('')}</Text>
+        ) : null}
+        <Text dimColor>
+          {last ? `Last run ${last.started_at ?? ''}: ${lastWord}` : 'No runs yet.'}
+        </Text>
+        {ledger.length === 0 ? (
+          <Text>{'No proof obligations yet. Capture one with /proof <what went wrong>, or lock in passing tests with /proof ratchet.'}</Text>
+        ) : null}
+        {ledger.map(r => (
+          <Button key={`req-${r.id}`} plain onPress={() => selectRequirement($, r.id)}>
+            {rowLabel(r)}
+          </Button>
+        ))}
+        {chosen && detail ? <Markdown key="detail" text={detail} /> : null}
+        <Box>
+          {chosen && isFailing(chosen) ? (
+            <Button
+              key="fix"
+              label="Ask Claude to fix"
+              variant="primary"
+              onPress={() => askToFix($, failing.filter(f => f.id === chosen.id).map(toFailing))}
+            />
+          ) : null}
+          <Button key="run" label="Run proof" onPress={() => runProof($, false)} />
+          <Button key="run-full" label="Run full" onPress={() => runProof($, true)} />
+        </Box>
+        <Text dimColor>{USAGE}</Text>
+      </Box>
+    )
+  })
+
   on('command.run', { command: 'proof' }, async ($, e) => {
     const args = e.args.trim()
     const flags = ratchetFlags(args)
     if (flags === null) return { text: USAGE }
     if (flags) return { text: await ratchet($, flags) }
     const text = args || (await attempt(() => $.ui.selection()))?.text.trim()
-    if (!text) return { text: USAGE }
+    if (!text) {
+      // Read first, so the pane's first paint is the ledger, not an empty one.
+      await refreshLedger($)
+      await $.ui.open({ id: PANE, title: 'proof9 ledger' })
+      return { text: 'Opened the proof9 ledger pane.' }
+    }
     return { text: await capture($, text) }
   })
 }
