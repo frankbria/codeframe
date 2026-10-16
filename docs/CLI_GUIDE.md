@@ -230,6 +230,15 @@ to lock (no tests, or none pass) and 1 when the suite cannot run. Run
 `cf proof run --full` afterwards to record their evidence; until then the merge
 gate treats them as open. Once satisfied, they are re-checked by `--full` runs.
 
+**Machine-readable output.** `run`, `list`, `status`, `show`, `capture` and
+`ratchet` take `--json`: stdout then holds one JSON document, and progress,
+warnings, errors and prompts go to stderr. Exit codes are the same as without
+it, and a command that fails before it has a result prints nothing on stdout.
+A run reports `passed` (obligations ran and none failed), `failed` (one
+failed) and, when nothing ran, `empty_reason`; `vacuous` marks a pass that
+verified nothing. `status` counts `failing` (not waived, with a failed
+obligation) and `locked` (from the ratchet).
+
 **How each gate is verified.** `UNIT` and `CONTRACT` run pytest, and `SEC` runs
 bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and
 are enforced through their evidence rules: `cf proof capture` generates a

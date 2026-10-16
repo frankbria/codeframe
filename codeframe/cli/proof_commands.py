@@ -4,10 +4,15 @@ Provides `cf proof` subcommands for capturing requirements,
 running obligations, managing waivers, and viewing status.
 """
 
+import functools
+import json
+import sys
+from contextlib import redirect_stdout
+from contextvars import ContextVar
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, TypeVar
+from typing import TYPE_CHECKING, Optional, TextIO, TypeVar
 
 import typer
 from rich.console import Console
@@ -29,6 +34,43 @@ proof_app = typer.Typer(
     help="PROOF9 quality memory system — evidence-based verification",
     no_args_is_help=True,
 )
+
+
+JSON_HELP = (
+    "Print one JSON document on stdout; everything else goes to stderr. "
+    "Nothing is printed on stdout when the command fails before it has a result."
+)
+
+#: The real stdout while a `--json` command runs with stdout sent to stderr.
+_json_stdout: ContextVar[Optional[TextIO]] = ContextVar("_json_stdout", default=None)
+
+
+def _json_capable(fn):
+    """With ``--json``, stdout carries only the document `_emit` writes (#1488).
+
+    Every other line — progress, warnings, errors, interactive prompts — goes
+    to stderr, because the Rich consoles and ``typer.prompt`` all write to
+    whatever ``sys.stdout`` is at the time. That keeps the human-readable paths
+    and their exit codes exactly as they are.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not kwargs.get("as_json"):
+            return fn(*args, **kwargs)
+        token = _json_stdout.set(sys.stdout)
+        try:
+            with redirect_stdout(sys.stderr):
+                return fn(*args, **kwargs)
+        finally:
+            _json_stdout.reset(token)
+
+    return wrapper
+
+
+def _emit(doc: dict) -> None:
+    out = _json_stdout.get()
+    out.write(json.dumps(doc, indent=2) + "\n")
+    out.flush()
 
 
 def _prompt_choice(text: str, choices: list[str], default: str) -> str:
@@ -109,6 +151,7 @@ def _print_stubs(stubs: "dict[Gate, Path]", repo_root: Path) -> None:
 
 
 @proof_app.command("capture")
+@_json_capable
 def capture(
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
@@ -131,6 +174,7 @@ def capture(
     source_issue: Optional[str] = typer.Option(
         None, "--from-issue", help="GitHub issue reference (e.g., GH-123)",
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """Capture a glitch as a permanent proof requirement.
 
@@ -144,9 +188,10 @@ def capture(
         codeframe proof capture
         codeframe proof capture --title "Login rejects empty password" --severity high
     """
-    from codeframe.core.workspace import capture_workspace_root
+    from codeframe.core.workspace import CODEFRAME_DIR, capture_workspace_root
     from codeframe.core.proof.models import Severity, Source
     from codeframe.core.proof.capture import capture_requirement
+    from codeframe.core.proof.serialize import capture_document
 
     try:
         workspace_path = capture_workspace_root(repo_path or Path.cwd())
@@ -161,11 +206,15 @@ def capture(
     sev = _choose(Severity, "Severity", severity, "medium")
     src = _choose(Source, "Source", source, "qa", reserved=(Source.RATCHET,))
 
+    warnings: list[str] = []
+
     def _scope_warning(message: str) -> None:
+        warnings.append(message)
         console.print(f"[yellow]⚠[/yellow] {escape(message)}")
 
     # Created only now, after the input is known good: a rejected capture
     # must not leave an empty workspace behind (#1464).
+    existed = (workspace_path / CODEFRAME_DIR).is_dir()
     workspace = _load_or_create_workspace(workspace_path)
 
     req, stubs = capture_requirement(
@@ -179,10 +228,16 @@ def capture(
         on_warning=_scope_warning,
     )
 
+    if as_json:
+        _emit(capture_document(
+            req, stubs, workspace.repo_path, workspace_created=not existed, warnings=warnings,
+        ))
+        return
     _print_captured(req, stubs, workspace.repo_path)
 
 
 @proof_app.command("ratchet")
+@_json_capable
 def ratchet(
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
@@ -193,6 +248,7 @@ def ratchet(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Report what would be locked in; write nothing",
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """Lock every currently-passing test in as a proof obligation.
 
@@ -213,6 +269,7 @@ def ratchet(
     """
     from codeframe.core.workspace import CODEFRAME_DIR, capture_workspace_root, get_workspace
     from codeframe.core.proof.ratchet import RatchetError, lock_in, run_suite
+    from codeframe.core.proof.serialize import ratchet_document
 
     try:
         root = capture_workspace_root(repo_path or Path.cwd())
@@ -253,6 +310,8 @@ def ratchet(
 
     if not suite.passing:
         console.print("[red]No passing tests eligible to lock in.[/red]")
+        if as_json:
+            _emit(ratchet_document(suite, None, dry_run=dry_run, workspace_created=False))
         raise typer.Exit(2)
 
     if not suite.per_file_scope:
@@ -263,7 +322,8 @@ def ratchet(
             "its test covers."
         )
 
-    if not dry_run and workspace is None:
+    workspace_created = not dry_run and workspace is None
+    if workspace_created:
         workspace = _load_or_create_workspace(root)
     try:
         result = lock_in(workspace, suite, dry_run=dry_run)
@@ -272,6 +332,11 @@ def ratchet(
         print_error(e)
         raise typer.Exit(1)
 
+    if as_json:
+        _emit(ratchet_document(
+            suite, result, dry_run=dry_run, workspace_created=workspace_created,
+        ))
+        return
     n = len(result.locked)
     tests = "test" if n == 1 else "tests"
     if dry_run and n:
@@ -292,6 +357,7 @@ def ratchet(
 
 
 @proof_app.command("run")
+@_json_capable
 def run(
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
@@ -310,6 +376,7 @@ def run(
             "a run that verified nothing is not a pass (#1118)."
         ),
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """Run proof obligations for current changes.
 
@@ -331,7 +398,13 @@ def run(
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core.proof.models import PROOF_CONFIG_FILENAME, Gate, GateOutcome
-    from codeframe.core.proof.runner import EmptyReason, run_proof_with_diagnostics
+    from codeframe.core.proof import ledger
+    from codeframe.core.proof.runner import (
+        EmptyReason,
+        _new_run_id,
+        run_proof_with_diagnostics,
+    )
+    from codeframe.core.proof.serialize import run_document
 
     workspace_path = repo_path or Path.cwd()
     try:
@@ -352,9 +425,30 @@ def run(
     mode = "full" if full else "scope-filtered"
     console.print(f"[dim]Running proof obligations ({mode})...[/dim]")
 
+    run_id = _new_run_id()
+    before = {}
+    if as_json:
+        # The runner expires lapsed waivers before it runs; do it first so the
+        # snapshot shows what the run actually started from.
+        ledger.check_expired_waivers(workspace)
+        before = {r.id: r for r in ledger.list_requirements(workspace)}
     results, diagnostics = run_proof_with_diagnostics(
-        workspace, full=full, gate_filter=gate_filter
+        workspace, full=full, gate_filter=gate_filter, run_id=run_id
     )
+
+    if as_json:
+        saved = ledger.get_run(workspace, run_id)
+        _emit(run_document(
+            run_id=run_id,
+            full=full,
+            gate_filter=gate_filter,
+            results=results,
+            before=before,
+            after={r.id: r for r in ledger.list_requirements(workspace)},
+            vacuous=bool(saved and saved.vacuous_pass),
+            empty_reason=None if results else diagnostics.reason.value,
+            description=None if results else diagnostics.describe(),
+        ))
 
     def _stop_nothing_verified() -> None:
         """End the run for an empty result: exit 2, or 0 under --allow-empty.
@@ -503,6 +597,7 @@ def run(
 
 
 @proof_app.command("list")
+@_json_capable
 def list_reqs(
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
@@ -510,6 +605,7 @@ def list_reqs(
     status: Optional[str] = typer.Option(
         None, "--status", help="Filter by status (open/satisfied/waived)",
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """List all proof requirements.
 
@@ -538,6 +634,11 @@ def list_reqs(
 
     reqs = ledger.list_requirements(workspace, status=status_filter)
 
+    if as_json:
+        from codeframe.core.proof.serialize import requirement_to_dict
+
+        _emit({"requirements": [requirement_to_dict(r) for r in reqs]})
+        return
     if not reqs:
         console.print("No requirements found.")
         return
@@ -569,11 +670,13 @@ def list_reqs(
 
 
 @proof_app.command("show")
+@_json_capable
 def show(
     req_id: str = typer.Argument(help="Requirement ID (e.g., REQ-0001)"),
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """Show detailed information about a requirement.
 
@@ -595,6 +698,14 @@ def show(
         console.print(f"[red]Error:[/red] Requirement {escape(req_id)} not found.")
         raise typer.Exit(1)
 
+    if as_json:
+        from codeframe.core.proof.serialize import evidence_to_dict, requirement_to_dict
+
+        _emit({
+            "requirement": requirement_to_dict(req),
+            "evidence": [evidence_to_dict(e) for e in ledger.list_evidence(workspace, req.id)],
+        })
+        return
     console.print(f"\n[bold]{req.id}[/bold]: {escape(req.title)}")
     console.print(f"  Status: {req.status.value}")
     console.print(f"  Severity: {req.severity.value}")
@@ -690,10 +801,12 @@ def waive(
 
 
 @proof_app.command("status")
+@_json_capable
 def status_cmd(
     repo_path: Optional[Path] = typer.Option(
         None, "--workspace", "-w", help="Workspace path",
     ),
+    as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
     """Show proof system status — satisfied/failing/waived counts.
 
@@ -716,6 +829,11 @@ def status_cmd(
         console.print(f"[yellow]Expired {len(expired)} waivers → reverted to open[/yellow]\n")
 
     reqs = ledger.list_requirements(workspace)
+    if as_json:
+        from codeframe.core.proof.serialize import status_document
+
+        _emit(status_document(reqs, expired))
+        return
     if not reqs:
         # Same framing as `cf proof run` (#1118): an empty ledger means nothing
         # is being verified, which is a state to act on, not a clean bill.
