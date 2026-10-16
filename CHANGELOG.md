@@ -61,6 +61,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   plugin on every PR (`proof9-plugin`) against vendored API types in
   `tools/proof9-types/`, installing the Claude Code version that wrote them.
 
+### Fixed
+
+- **A lapsed waiver keeps its record when it reverts** (#1503). Every
+  `cf proof run` and `cf proof status` reopens a requirement whose waiver has
+  expired, and used to delete the waiver while doing it: who accepted the
+  risk, why, and until when. The waiver now stays on the requirement as
+  history, and `cf proof show` labels it "expired, no longer in force"; the
+  requirement is reopened and treated as open everywhere, as before.
+
 ### Documentation
 
 - **The run-without-installing command is `uvx --from codeframe-ai cf`.** The

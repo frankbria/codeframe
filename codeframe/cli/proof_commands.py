@@ -728,7 +728,11 @@ def show(
         console.print(f"  {obl.gate.value}: {obl.status}")
 
     if req.waiver:
-        console.print("\n[bold]Waiver:[/bold]")
+        # A lapsed waiver stays on the requirement as its record (#1503).
+        from codeframe.core.proof.models import ReqStatus
+
+        in_force = req.status == ReqStatus.WAIVED and not ledger.waiver_expired(req)
+        console.print(f"\n[bold]Waiver{'' if in_force else ' (expired, no longer in force)'}:[/bold]")
         console.print(f"  Reason: {req.waiver.reason}")
         if req.waiver.expires:
             console.print(f"  Expires: {req.waiver.expires}")
