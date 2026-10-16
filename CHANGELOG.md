@@ -14,6 +14,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   progress, warnings, errors and prompts go to stderr; exit codes are
   unchanged. A run reports `passed`, `failed`, `vacuous` and, when nothing
   ran, `empty_reason`; `status` counts `failing` and `locked` requirements.
+- **The proof9 Claude Code plugin** (`proof9/`, #1469). `/proof <what went
+  wrong>` captures a requirement scoped to the whole repository, `/proof` with
+  a transcript selection uses that text, and `/proof ratchet [--dry-run]` locks
+  in the tests that pass today. It runs `cf proof … --json` by argv and needs
+  codeframe 0.9.7 or later; session start says how to install or upgrade the
+  CLI when it is missing or older.
 
 ### Documentation
 
