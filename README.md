@@ -123,7 +123,7 @@ cf --help
 ```
 
 `pipx install codeframe-ai` works too, or run it without installing via
-`uvx codeframe-ai --help`. The package is `codeframe-ai`; the command is `cf`.
+`uvx --from codeframe-ai cf --help`. The package is `codeframe-ai`; the command is `cf`.
 
 **2. Set your API key**
 

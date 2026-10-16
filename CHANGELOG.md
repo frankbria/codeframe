@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Documentation
+
+- **The run-without-installing command is `uvx --from codeframe-ai cf`.** The
+  README and quickstart said `uvx codeframe-ai --help`, which fails: the
+  package installs `cf` and `codeframe`, and no executable named
+  `codeframe-ai`.
+
 ## [0.9.6] - 2026-10-15
 
 ### Added
