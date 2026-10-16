@@ -325,6 +325,9 @@ type Shown = {
 async function selectRequirement($: EngineInterface, id: string): Promise<void> {
   await update($, selectedAtom, () => id)
   const ran = await cf($, ['proof', 'show', id, '--json'])
+  // A later selection that answered first wins: never show one requirement's
+  // evidence under another's name.
+  if ((await read($, selectedAtom)) !== id) return
   const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<Shown>(ran)
   if (!doc) {
     await update($, detailAtom, () => `Could not read ${md(id)}: ${md('failed' in ran ? ran.failed : errorText(ran))}`)
@@ -663,9 +666,10 @@ export const register: Register = (on, options) => {
     if (flags) return { text: await ratchet($, flags) }
     const text = args || (await attempt(() => $.ui.selection()))?.text.trim()
     if (!text) {
-      await $.ui.open({ id: PANE, title: 'proof9 ledger' })
+      // Read first, so the pane's first paint is the ledger, not an empty one.
       await refreshLedger($)
       await refreshRuns($)
+      await $.ui.open({ id: PANE, title: 'proof9 ledger' })
       return { text: 'Opened the proof9 ledger pane.' }
     }
     return { text: await capture($, text) }
