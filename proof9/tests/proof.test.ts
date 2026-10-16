@@ -25,6 +25,7 @@ function world(
 ) {
   const calls: Call[] = []
   const toasts: string[] = []
+  const opened: string[] = []
   on('process.run', (_$, e) => {
     calls.push({ argv: e.argv, env: e.init?.env, timeoutMs: e.init?.timeoutMs })
     const a = answer(e.argv)
@@ -54,7 +55,12 @@ function world(
     toasts.push(e.text)
     return { value: undefined }
   })
-  return { calls, toasts }
+  on('ui.open', (_$, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('ui.status', () => ({ value: undefined }))
+  return { calls, toasts, opened }
 }
 
 /** `/proof <args>` typed at the composer of a fullscreen terminal. */
@@ -161,19 +167,19 @@ describe('/proof with no text', () => {
     expect(argv[argv.indexOf('--description') + 1]).toBe('typed words')
   })
 
+  // Since #1491, no text and no selection opens the ledger pane (it shows the usage).
   test('a selection lookup that throws is treated as no selection', async ($, on) => {
     const w = world(on, capture, { selectionThrows: true })
-    const out = await proof($, '')
-    expect(w.calls).toEqual([])
-    expect(out.text).toContain('/proof <what went wrong>')
+    await proof($, '')
+    expect(w.calls.some(c => c.argv[2] === 'capture')).toBe(false)
+    expect(w.opened).toEqual(['proof9'])
   })
 
-  test('with no selection either, explains usage and runs nothing', async ($, on) => {
+  test('with no selection either, opens the ledger pane and captures nothing', async ($, on) => {
     const w = world(on, capture)
-    const out = await proof($, '   ')
-    expect(w.calls).toEqual([])
-    expect(out.text).toContain('/proof <what went wrong>')
-    expect(out.text).toContain('/proof ratchet')
+    await proof($, '   ')
+    expect(w.calls.some(c => c.argv[2] === 'capture')).toBe(false)
+    expect(w.opened).toEqual(['proof9'])
   })
 })
 

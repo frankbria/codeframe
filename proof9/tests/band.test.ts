@@ -288,3 +288,11 @@ test('a waiver that has expired no longer hides a failure (read-only, like the m
   const ui = await band($)
   expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeDefined()
 })
+
+test('on mobile, which has no Input, the band offers no Waive…', async ($, on) => {
+  world(on, [FAILING])
+  await start($)
+  const ui = await $.ui.mount({ plugin: 'proof9', surface: 'mobile', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ key: 'fix' })).toBeDefined()
+  expect(await ui.find({ key: 'waive' })).toBeUndefined()
+})

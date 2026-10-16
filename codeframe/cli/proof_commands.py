@@ -833,7 +833,7 @@ def status_cmd(
     if as_json:
         from codeframe.core.proof.serialize import status_document
 
-        _emit(status_document(reqs, expired))
+        _emit(status_document(reqs, expired, ledger.list_runs(workspace, limit=20)))
         return
     if not reqs:
         # Same framing as `cf proof run` (#1118): an empty ledger means nothing

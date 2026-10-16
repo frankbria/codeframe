@@ -26,6 +26,7 @@ from codeframe.core.proof.models import (
     Evidence,
     Gate,
     GateOutcome,
+    ProofRun,
     ReqStatus,
     Requirement,
     Source,
@@ -101,13 +102,30 @@ def is_failing(req: Requirement) -> bool:
     return req.status != ReqStatus.WAIVED and any(o.status == "failed" for o in req.obligations)
 
 
-def status_document(reqs: list[Requirement], expired: list[Requirement]) -> dict:
+def run_summary(run: ProofRun) -> dict:
+    return {
+        "run_id": run.run_id,
+        "started_at": _iso(run.started_at),
+        "passed": run.overall_passed,
+        "vacuous": run.vacuous_pass,
+        "duration_ms": run.duration_ms,
+    }
+
+
+def status_document(
+    reqs: list[Requirement], expired: list[Requirement], runs: list[ProofRun] = ()
+) -> dict:
     counts = {"total": len(reqs), "open": 0, "satisfied": 0, "waived": 0, "failing": 0, "locked": 0}
     for req in reqs:
         counts[req.status.value] = counts.get(req.status.value, 0) + 1
         counts["failing"] += is_failing(req)
         counts["locked"] += req.source == Source.RATCHET
-    return {"counts": counts, "expired_waivers": [r.id for r in expired]}
+    return {
+        "counts": counts,
+        "expired_waivers": [r.id for r in expired],
+        # Newest first: the proof9 pane's run history and last run (#1491).
+        "runs": [run_summary(r) for r in runs],
+    }
 
 
 def capture_document(
