@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>PROOF9 evidence report</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2rem;color:#111}
+h1{font-size:1.6rem}h2{border-bottom:1px solid #999;margin-top:2rem}
+table{border-collapse:collapse;width:100%;font-size:.85rem}
+td,th{border:1px solid #bbb;padding:.3rem .45rem;text-align:left;vertical-align:top}
+.cover{page-break-after:always}.tag{font-weight:700;padding:0 .3rem;border:1px solid}
+.satisfied{color:#176b2c}.open{color:#8a5a00}.waived{color:#555}.expired,.fail{color:#a11}
+.vacuous{color:#7a6400}code{font-size:.8rem;word-break:break-all}
+</style></head><body>
+<section class="cover">
+<h1>PROOF9 evidence report</h1>
+<table>
+<tr><th>Repository</th><td>shop</td></tr>
+<tr><th>Commit</th><td><code>184158309cf2a791689474fc43ec235d27702794</code></td></tr>
+<tr><th>Tool</th><td>codeframe-ai 0.9.7</td></tr>
+<tr><th>Generated</th><td>2026-10-16T18:08:06+00:00</td></tr>
+<tr><th>Requirements</th><td>4</td></tr>
+<tr><th>Runs</th><td>4</td></tr>
+</table>
+<p>Each requirement is a defect or behaviour that was captured and is enforced by named tests.
+Evidence is re-verified against its checksum, bound to the run and gate that produced it,
+when this report is made. A run that verified nothing is marked VACUOUS.</p>
+</section>
+
+<h2>Requirements</h2>
+
+
+<h3>REQ-0004: test_total_includes_shipping keeps passing
+<span class="tag satisfied">SATISFIED</span></h3>
+<table>
+<tr><th>Source</th><td>ratchet</td></tr>
+<tr><th>Severity</th><td>medium</td></tr>
+<tr><th>Scope</th><td>files: shop/cart.py, tests/test_cart.py<br></td></tr>
+<tr><th>Obligations</th><td>unit: satisfied</td></tr>
+
+</table>
+
+<table><tr><th>Gate</th><th>Result</th><th>Checksum</th><th>Run</th><th>Recorded</th></tr>
+<tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>c9ca7493681fec8e675e7882625e9c328b08de55db9ca2b133aec087a7b4ff08</code></td><td><code>86fa627b-a452-4f5e-a503-6204f9e92e2b</code></td><td>2026-10-16T18:01:53.835590+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>9b3fff5daaad9a5c7c80ea47d3a01b32cfa243db8006f8a276ead1c36f63c836</code></td><td><code>0292ccc2-5f89-48a3-b8af-78aadc91856a</code></td><td>2026-10-16T16:56:20.714050+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>92150e5f65c067c36009f29cf352fe7dfeaef4706e0570d317dca23a2826112b</code></td><td><code>e875b103-4073-4876-8883-0ecf77e0c924</code></td><td>2026-10-16T16:56:15.666082+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>751436af2c31108e0439c70f9fe03f660708c5a46c1069700403b81de81488da</code></td><td><code>a6994f9e-ee4e-45fa-9d63-83939dff757f</code></td><td>2026-10-16T16:48:41.304226+00:00</td>
+</tr></table>
+
+
+<h3>REQ-0003: test_subtotal_adds_every_line keeps passing
+<span class="tag satisfied">SATISFIED</span></h3>
+<table>
+<tr><th>Source</th><td>ratchet</td></tr>
+<tr><th>Severity</th><td>medium</td></tr>
+<tr><th>Scope</th><td>files: shop/cart.py, tests/test_cart.py<br></td></tr>
+<tr><th>Obligations</th><td>unit: satisfied</td></tr>
+
+</table>
+
+<table><tr><th>Gate</th><th>Result</th><th>Checksum</th><th>Run</th><th>Recorded</th></tr>
+<tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>bff215e8fded1a820a5896aa751084f2abf66981f6b941a1d13c4fd74387b2f0</code></td><td><code>86fa627b-a452-4f5e-a503-6204f9e92e2b</code></td><td>2026-10-16T18:01:53.887054+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>9f7b30e7da0c20220269b7f0e457f4e81e0ecc5e60336cbfffabea686c433bf9</code></td><td><code>0292ccc2-5f89-48a3-b8af-78aadc91856a</code></td><td>2026-10-16T16:56:20.757887+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>32bd4cf877820535827f44a1d97feec95b8641497988009668f115b6beda47b8</code></td><td><code>e875b103-4073-4876-8883-0ecf77e0c924</code></td><td>2026-10-16T16:56:15.704171+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>1b1b9d5643370107e1dd343c01fbb7de3d473da01e7b3f01fe20d3dcb204c815</code></td><td><code>a6994f9e-ee4e-45fa-9d63-83939dff757f</code></td><td>2026-10-16T16:48:41.342608+00:00</td>
+</tr></table>
+
+
+<h3>REQ-0002: test_small_orders_pay_shipping keeps passing
+<span class="tag satisfied">SATISFIED</span></h3>
+<table>
+<tr><th>Source</th><td>ratchet</td></tr>
+<tr><th>Severity</th><td>medium</td></tr>
+<tr><th>Scope</th><td>files: shop/cart.py, tests/test_cart.py<br></td></tr>
+<tr><th>Obligations</th><td>unit: satisfied</td></tr>
+
+</table>
+
+<table><tr><th>Gate</th><th>Result</th><th>Checksum</th><th>Run</th><th>Recorded</th></tr>
+<tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>53ddfa3fd9b8df442b66b49ad6373d9a4711eb4424cc65988778d4b9dbcbe21b</code></td><td><code>86fa627b-a452-4f5e-a503-6204f9e92e2b</code></td><td>2026-10-16T18:01:53.924936+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>013616f0d00f35c501ac6c587d919fd9faa24807b77767c0c55a406728a0caf8</code></td><td><code>0292ccc2-5f89-48a3-b8af-78aadc91856a</code></td><td>2026-10-16T16:56:20.803271+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>1e7dd07da4094e5863453f02f925fd1caf24afc054704526a4bee45a487393bb</code></td><td><code>e875b103-4073-4876-8883-0ecf77e0c924</code></td><td>2026-10-16T16:56:15.742597+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>c821e40f594906d0befeb2a20d3343b554aa7d520e7604c02cfc2108e69eccd3</code></td><td><code>a6994f9e-ee4e-45fa-9d63-83939dff757f</code></td><td>2026-10-16T16:48:41.388270+00:00</td>
+</tr></table>
+
+
+<h3>REQ-0001: test_orders_over_50_ship_free keeps passing
+<span class="tag satisfied">SATISFIED</span></h3>
+<table>
+<tr><th>Source</th><td>ratchet</td></tr>
+<tr><th>Severity</th><td>medium</td></tr>
+<tr><th>Scope</th><td>files: shop/cart.py, tests/test_cart.py<br></td></tr>
+<tr><th>Obligations</th><td>unit: satisfied</td></tr>
+
+</table>
+
+<table><tr><th>Gate</th><th>Result</th><th>Checksum</th><th>Run</th><th>Recorded</th></tr>
+<tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>90f5bdea778be7003e15f5544c066f109c49986189096152eb70e9e6ace9f687</code></td><td><code>86fa627b-a452-4f5e-a503-6204f9e92e2b</code></td><td>2026-10-16T18:01:53.960026+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>6aba41d335500774090f6dbc9d286e39e8eac5d46dc472a429c2e7f9c498ffaf</code></td><td><code>0292ccc2-5f89-48a3-b8af-78aadc91856a</code></td><td>2026-10-16T16:56:20.840929+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>b383398fd9a6457269bd810499eab0503237f0bf2e8157f384c8ac8f999b6a4f</code></td><td><code>e875b103-4073-4876-8883-0ecf77e0c924</code></td><td>2026-10-16T16:56:15.778011+00:00</td>
+</tr><tr>
+<td>unit</td>
+<td>PASSED</td>
+<td><code>56ef5af0d69d20718e17908088d4bf7f4b443ed9d7d83f6f0721eedcaf57183b</code></td><td><code>a6994f9e-ee4e-45fa-9d63-83939dff757f</code></td><td>2026-10-16T16:48:41.425639+00:00</td>
+</tr></table>
+
+
+
+<h2>Run history</h2>
+
+<table><tr><th>Started</th><th>Result</th><th>Duration</th><th>Run</th></tr>
+<tr>
+<td>2026-10-16T18:01:53.536427+00:00</td>
+<td>PASSED</td>
+<td>458 ms</td><td><code>86fa627b-a452-4f5e-a503-6204f9e92e2b</code></td>
+</tr><tr>
+<td>2026-10-16T16:56:20.415335+00:00</td>
+<td>PASSED</td>
+<td>463 ms</td><td><code>0292ccc2-5f89-48a3-b8af-78aadc91856a</code></td>
+</tr><tr>
+<td>2026-10-16T16:56:15.372908+00:00</td>
+<td>PASSED</td>
+<td>441 ms</td><td><code>e875b103-4073-4876-8883-0ecf77e0c924</code></td>
+</tr><tr>
+<td>2026-10-16T16:48:40.995207+00:00</td>
+<td>PASSED</td>
+<td>466 ms</td><td><code>a6994f9e-ee4e-45fa-9d63-83939dff757f</code></td>
+</tr></table>
+
+<h2>Merge overrides</h2>
+<p>No merge overrides recorded.</p>
+</body></html>
