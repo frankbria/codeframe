@@ -46,6 +46,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   ledger gets a band naming it and its test, with Ask Claude to fix, Show
   evidence, Waive… and Dismiss; it clears when a later run passes. An empty
   ledger gets Lock in passing tests and Capture a bug, once per repository.
+- **Claude can capture a bug itself** (#1490). proof9 registers a `capture`
+  tool (`mcp__proof9__capture`) over `cf proof capture`, and in a repository
+  with a ledger adds a short system-prompt section: offer a capture after
+  fixing a regression; when a requirement fails, fix the code, not the test.
 
 ### Documentation
 
