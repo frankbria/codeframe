@@ -169,6 +169,14 @@ class TestCaptureRequirement:
         )
         assert response.status_code == 422
 
+    def test_capture_refuses_the_reserved_ratchet_source(self, test_client):
+        """`ratchet` marks rows `cf proof ratchet` locked in (#1467)."""
+        response = test_client.post(
+            "/api/v2/proof/requirements",
+            json=self._valid_body(source="ratchet"),
+        )
+        assert response.status_code == 422
+
     def test_capture_persists_to_core(self, test_client):
         """Captured requirement is retrievable via core ledger."""
         from codeframe.core.proof.ledger import list_requirements

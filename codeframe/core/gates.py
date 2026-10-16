@@ -740,6 +740,13 @@ def _exact_cases_verdict(report: Path, name: str) -> Optional[str]:
         ]
     except (OSError, ET.ParseError):
         return None
+    return cases_verdict(cases)
+
+
+def cases_verdict(cases: list[ET.Element]) -> Optional[str]:
+    """The verdict ``_exact_cases_verdict`` gives a set of JUnit cases sharing
+    one name. Shared with ``cf proof ratchet`` (#1467), which must lock in only
+    what the runner will later judge a pass."""
     if not cases:
         return None
     if any(c.find("failure") is not None or c.find("error") is not None for c in cases):

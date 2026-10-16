@@ -64,14 +64,26 @@ def _or_prompt(value: Optional[str], text: str) -> str:
     return value or typer.prompt(text)
 
 
-def _choose(enum_cls: type[_E], label: str, value: Optional[str], default: str) -> _E:
-    """``value`` (prompted for when missing) as an ``enum_cls``; exit 1 if invalid."""
-    value = value or _prompt_choice(label, [e.value for e in enum_cls], default)
+def _choose(
+    enum_cls: type[_E],
+    label: str,
+    value: Optional[str],
+    default: str,
+    reserved: tuple[_E, ...] = (),
+) -> _E:
+    """``value`` (prompted for when missing) as an ``enum_cls``; exit 1 if
+    invalid or one of ``reserved`` (members only other commands may set)."""
+    value = value or _prompt_choice(
+        label, [e.value for e in enum_cls if e not in reserved], default
+    )
     try:
-        return enum_cls(value)
+        chosen = enum_cls(value)
     except ValueError:
+        chosen = None
+    if chosen is None or chosen in reserved:
         console.print(f"[red]Error:[/red] Invalid {label.lower()}: {escape(str(value))}")
         raise typer.Exit(1)
+    return chosen
 
 
 def _print_captured(req: "Requirement", stubs: "dict[Gate, Path]", repo_root: Path) -> None:
@@ -147,7 +159,7 @@ def capture(
     description = _or_prompt(description, "Describe the issue (expected vs actual)")
     where = _or_prompt(where, "Where? (file path, URL, API route, or component)")
     sev = _choose(Severity, "Severity", severity, "medium")
-    src = _choose(Source, "Source", source, "qa")
+    src = _choose(Source, "Source", source, "qa", reserved=(Source.RATCHET,))
 
     def _scope_warning(message: str) -> None:
         console.print(f"[yellow]⚠[/yellow] {escape(message)}")
@@ -168,6 +180,106 @@ def capture(
     )
 
     _print_captured(req, stubs, workspace.repo_path)
+
+
+@proof_app.command("ratchet")
+def ratchet(
+    repo_path: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Workspace path",
+    ),
+    path_glob: Optional[str] = typer.Option(
+        None, "--path", help="Only tests under paths matching this glob (e.g. 'tests/unit/*')",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be locked in; write nothing",
+    ),
+) -> None:
+    """Lock every currently-passing test in as a proof obligation.
+
+    Runs the project's pytest suite once. Each passing test becomes a
+    requirement whose UNIT obligation is that test, scoped to the files it
+    covers (needs pytest-cov in the project; otherwise the whole repository).
+    Failing and skipped tests are not locked. Re-running adds only tests not
+    already locked. Creates the workspace on first use, like capture.
+
+    Exit codes:
+        0  tests were locked in, or every passing test already was
+        1  the test suite could not run
+        2  nothing to lock: no tests found, or none passed
+
+    Example:
+        codeframe proof ratchet --dry-run
+        codeframe proof ratchet --path 'tests/unit/*'
+    """
+    from codeframe.core.workspace import CODEFRAME_DIR, capture_workspace_root, get_workspace
+    from codeframe.core.proof.ratchet import RatchetError, lock_in, run_suite
+
+    try:
+        root = capture_workspace_root(repo_path or Path.cwd())
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+
+    workspace = None
+    if (root / CODEFRAME_DIR).is_dir():
+        try:
+            workspace = get_workspace(root)
+        except Exception as e:
+            print_error(e)
+            raise typer.Exit(1)
+
+    console.print("[dim]Running the test suite...[/dim]")
+    try:
+        suite = run_suite(
+            root, path_glob=path_glob,
+            sandbox_root=workspace.repo_path if workspace else None,
+        )
+    except RatchetError as e:
+        console.print(f"[red]Error:[/red] {escape(str(e))}")
+        raise typer.Exit(2 if e.no_tests else 1)
+
+    not_locked = []
+    if suite.failed:
+        not_locked.append(f"{len(suite.failed)} failed")
+    if suite.skipped:
+        not_locked.append(f"{len(suite.skipped)} skipped")
+    if not_locked:
+        console.print(f"Not locked in: {', '.join(not_locked)}.")
+    if suite.unenforceable:
+        console.print(
+            "[yellow]⚠[/yellow] Not locked in — a proof rule can only name tests "
+            f"starting with test_: {escape(', '.join(suite.unenforceable))}"
+        )
+
+    if not suite.passing:
+        console.print("[red]No passing tests to lock in.[/red]")
+        raise typer.Exit(2)
+
+    if not suite.per_file_scope:
+        console.print(
+            "[yellow]⚠[/yellow] pytest-cov is not installed in this project, so each "
+            "obligation is scoped to the whole repository. Install pytest-cov to "
+            "scope each one to the files its test covers."
+        )
+
+    if not dry_run and workspace is None:
+        workspace = _load_or_create_workspace(root)
+    result = lock_in(workspace, suite, dry_run=dry_run)
+
+    n = len(result.locked)
+    tests = "test" if n == 1 else "tests"
+    if dry_run:
+        console.print(f"Would lock in {n} passing {tests} as obligations (dry run — nothing written):")
+        for name, files in result.locked.items():
+            console.print(f"  {escape(name)}  [dim]({len(files)} file(s) in scope)[/dim]")
+    elif n:
+        console.print(
+            f"[green]✓[/green] Locked in {n} passing {tests} as obligations. "
+            "Nothing that passes today can silently stop passing."
+        )
+        console.print("Run `cf proof run` to record their evidence.")
+    if result.already_locked:
+        console.print(f"{len(result.already_locked)} passing test(s) already locked in.")
 
 
 @proof_app.command("run")

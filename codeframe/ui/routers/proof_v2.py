@@ -103,6 +103,16 @@ class CaptureRequirementRequest(BaseModel):
     where: str = Field(..., min_length=1, description="Location (file, route, API, tag) where glitch occurred")
     severity: Severity = Field(..., description="Severity: critical, high, medium, low")
     source: Source = Field(..., description="Source: production, qa, dogfooding, monitoring, user_report")
+
+    @field_validator("source")
+    @classmethod
+    def _not_ratchet(cls, v: Source) -> Source:
+        # Reserved for `cf proof ratchet` (#1467): a 422 here, not the 500 the
+        # core ValueError would become.
+        if v == Source.RATCHET:
+            raise ValueError("source 'ratchet' is reserved for `cf proof ratchet`")
+        return v
+
     # created_by is NOT accepted from the body: it is taken from the
     # authenticated principal, so the record cannot be forged (#923).
     source_issue: Optional[str] = Field(default=None, description="External issue reference (e.g. GH-123)")

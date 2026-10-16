@@ -74,6 +74,9 @@ class Source(str, Enum):
     DOGFOODING = "dogfooding"
     MONITORING = "monitoring"
     USER_REPORT = "user_report"
+    # Locked in by `cf proof ratchet` (#1467), not a captured defect. Reserved:
+    # capture refuses it, so the two stay distinguishable.
+    RATCHET = "ratchet"
 
 
 class Severity(str, Enum):
