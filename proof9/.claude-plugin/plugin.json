@@ -25,5 +25,6 @@
       "description": "How long the pre-commit proof run may take before it is cut short.",
       "default": 120
     }
-  }
+  },
+  "types": "./types/index.d.ts"
 }

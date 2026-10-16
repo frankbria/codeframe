@@ -28,7 +28,14 @@ const OUT_OF_SCOPE = {
   ...EMPTY_LEDGER, empty_reason: 'excluded_by_scope', description: 'all 2 requirement(s) are out of scope',
 }
 const VACUOUS = { ...PASSING_RUN, vacuous: true }
-const STATUS = { counts: { total: 2, open: 1, satisfied: 1, waived: 0, failing: 1, locked: 1 }, expired_waivers: [] }
+const listed = (failed: boolean[]) => ({
+  requirements: failed.map((f, i) => ({
+    id: `REQ-${i + 1}`, title: `r${i + 1}`, status: 'open', source: 'qa',
+    obligations: [{ gate: 'unit', status: f ? 'failed' : 'satisfied' }],
+    evidence_rules: [{ test_id: `test_unit_${i + 1}`, gate: 'unit', must_pass: true }],
+  })),
+})
+const STATUS = listed([true, false])
 
 const json = (doc: unknown, exitCode = 0): Answer => ({ exitCode, stdout: JSON.stringify(doc) })
 
@@ -39,7 +46,7 @@ function world(on: On, run: Answer, status: Answer = json(STATUS)) {
   const commands: string[] = []
   on('process.run', (_$, e) => {
     calls.push({ argv: e.argv, timeoutMs: e.init?.timeoutMs })
-    const a = e.argv[1] === 'proof' && e.argv[2] === 'run' ? run : e.argv[2] === 'status' ? status : json({})
+    const a = e.argv[1] === 'proof' && e.argv[2] === 'run' ? run : e.argv[2] === 'list' ? status : json({})
     if ('deny' in a) return a
     return {
       value: {
@@ -267,7 +274,7 @@ describe('review fixes', () => {
   })
 
   test('one obligation is singular', async ($, on) => {
-    const w = world(on, json(PASSING_RUN), json({ counts: { ...STATUS.counts, total: 1, failing: 0 }, expired_waivers: [] }))
+    const w = world(on, json(PASSING_RUN), json(listed([false])))
     await bash($, 'git commit -m x')
     expect(w.statuses.at(-1)).toBe('proof9 · 1 obligation · 0 failing')
   })
@@ -281,7 +288,7 @@ describe('status line', () => {
   })
 
   test('says so when the ledger is empty', async ($, on) => {
-    const w = world(on, json(EMPTY_LEDGER, 2), json({ counts: { ...STATUS.counts, total: 0, failing: 0 }, expired_waivers: [] }))
+    const w = world(on, json(EMPTY_LEDGER, 2), json(listed([])))
     await bash($, 'git commit -m x')
     expect(w.statuses.at(-1)).toBe('proof9 · no obligations yet')
   })
