@@ -43,6 +43,12 @@ def capture_requirement(
     Returns the saved Requirement and a dict of Gate → written stub file path
     (stubs are persisted under tests/proof/<req_id>/).
     """
+    if source == Source.RATCHET:
+        raise ValueError(
+            "source 'ratchet' is reserved for `cf proof ratchet`; a captured "
+            "defect must say where it was found"
+        )
+
     # 1. Classify the glitch
     glitch_type = classify_glitch(description)
 

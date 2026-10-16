@@ -147,6 +147,7 @@ EXEMPT: dict[str, str] = {
     "templates apply": "writes template files into the workspace",
     "proof capture": "covered by the seeded requirement",
     "proof run": "runs the 9 gates, i.e. the project's test suite",
+    "proof ratchet": "runs the project's test suite",
     "proof waive": "mutates the seeded requirement `proof show` renders",
     "hooks run": "executes repo-configured shell hooks",
     "hooks set": "edits .codeframe/config.yaml",
