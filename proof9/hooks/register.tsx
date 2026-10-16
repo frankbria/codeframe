@@ -242,7 +242,7 @@ async function checkVersion($: EngineInterface): Promise<boolean> {
   return true
 }
 
-type Listed = { requirements: LedgerRequirement[] }
+type Listed = { requirements: LedgerRequirement[]; runs?: RunSummary[] }
 
 const failureKey = (f: Failing) => `${f.id}:${f.tests.join(',')}`
 
@@ -273,6 +273,7 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
   await update($, failingAtom, () => failing)
   await update($, ledgerAtom, () => reqs)
+  if (doc.runs) await update($, runsAtom, () => doc.runs ?? [])
   // A dismissal ends with its failure, so a later regression shows again.
   const live = new Set(failing.map(failureKey))
   await update($, dismissedAtom, keys => keys.filter(k => live.has(k)))
@@ -290,11 +291,6 @@ const isWaived = (r: LedgerRequirement) => r.status === 'waived' && !r.waiver?.e
 /** Failing as `cf proof status` counts it (#1488); a lapsed waiver no longer covers it (#1276). */
 const isFailing = (r: LedgerRequirement) => !isWaived(r) && r.obligations.some(o => o.status === 'failed')
 
-async function refreshRuns($: EngineInterface): Promise<void> {
-  const ran = await cf($, ['proof', 'status', '--json'], 10_000)
-  const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<{ runs?: RunSummary[] }>(ran)
-  if (doc?.runs) await update($, runsAtom, () => doc.runs ?? [])
-}
 
 /** One pane row: a symbol and a word per status, so none is told apart by color alone. */
 function rowLabel(r: LedgerRequirement): string {
@@ -370,7 +366,6 @@ async function runProof($: EngineInterface, full: boolean): Promise<void> {
   const ran = await cf($, ['proof', 'run', ...(full ? ['--full'] : []), '--json'], 600_000)
   if ('failed' in ran) $.ui.toast(cannotRun(ran.failed).replace(/\n/g, ' '))
   await refreshLedger($)
-  await refreshRuns($)
   const selected = await read($, selectedAtom)
   if (selected) await selectRequirement($, selected)
 }
@@ -670,7 +665,6 @@ export const register: Register = (on, options) => {
     if (!text) {
       // Read first, so the pane's first paint is the ledger, not an empty one.
       await refreshLedger($)
-      await refreshRuns($)
       await $.ui.open({ id: PANE, title: 'proof9 ledger' })
       return { text: 'Opened the proof9 ledger pane.' }
     }

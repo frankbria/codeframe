@@ -112,18 +112,21 @@ def run_summary(run: ProofRun) -> dict:
     }
 
 
-def status_document(
-    reqs: list[Requirement], expired: list[Requirement], runs: Sequence[ProofRun] = ()
-) -> dict:
+def status_document(reqs: list[Requirement], expired: list[Requirement]) -> dict:
     counts = {"total": len(reqs), "open": 0, "satisfied": 0, "waived": 0, "failing": 0, "locked": 0}
     for req in reqs:
         counts[req.status.value] = counts.get(req.status.value, 0) + 1
         counts["failing"] += is_failing(req)
         counts["locked"] += req.source == Source.RATCHET
+    return {"counts": counts, "expired_waivers": [r.id for r in expired]}
+
+
+def list_document(reqs: list[Requirement], runs: Sequence[ProofRun]) -> dict:
+    """``cf proof list --json``: the requirements and, newest first, recent runs
+    (#1491). Read-only — unlike ``status``, which reverts expired waivers — so the
+    proof9 pane can read the ledger without changing it."""
     return {
-        "counts": counts,
-        "expired_waivers": [r.id for r in expired],
-        # Newest first: the proof9 pane's run history and last run (#1491).
+        "requirements": [requirement_to_dict(r) for r in reqs],
         "runs": [run_summary(r) for r in runs],
     }
 

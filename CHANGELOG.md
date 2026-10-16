@@ -54,7 +54,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   opens the ledger beside the transcript: statuses (failing first), run
   history and the last run, a requirement's evidence with checksums, and Run
   proof / Run full / Ask Claude to fix. It replaces the web UI's proof pages.
-  `cf proof status --json` now includes the 20 most recent `runs`.
+  `cf proof list --json` now includes the 20 most recent `runs` (read-only).
 - **Install proof9 from this repository** (#1471):
   `/plugin install proof9 --marketplace frankbria/codeframe`. The repo root
   carries the marketplace file, and CI validates, tests and type-checks the

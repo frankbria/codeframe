@@ -19,7 +19,6 @@ const LEDGER = {
     req('REQ-0005', 'Old flaky test', 'waived', 'failed', { reason: 'later', expired: true }),
   ],
 }
-const STATUS = (runs: unknown[]) => ({ counts: {}, expired_waivers: [], runs })
 const RUNS = [
   { run_id: 'r3', started_at: '2026-10-16T10:00:00+00:00', passed: true, vacuous: true, duration_ms: 5 },
   { run_id: 'r2', started_at: '2026-10-16T09:00:00+00:00', passed: false, vacuous: false, duration_ms: 900 },
@@ -45,8 +44,8 @@ function world(on: On, ledger: unknown = LEDGER, runs: unknown[] = RUNS) {
   on('process.run', (_$, e) => {
     argvs.push(e.argv.join(' '))
     const a: Answer = e.argv[1] === '--version' ? { stdout: 'codeframe 0.9.7' }
-      : e.argv[2] === 'list' ? { stdout: JSON.stringify(ledger) }
-        : e.argv[2] === 'status' ? { stdout: JSON.stringify(STATUS(runs)) }
+      : e.argv[2] === 'list' ? { stdout: JSON.stringify({ ...(ledger as object), runs }) }
+        : e.argv[2] === 'status' ? { exitCode: 1, stderr: 'the pane must not read status: it reverts expired waivers' }
           : e.argv[2] === 'show' ? { stdout: JSON.stringify(SHOW) }
             : e.argv[2] === 'run' ? { exitCode: 1, stdout: JSON.stringify({ failed: true, vacuous: false, empty_reason: null, description: null, requirements: [] }) }
               : { stdout: '' }
@@ -191,4 +190,12 @@ test('on a surface without Raster the history is text', async ($, on) => {
   await proof($, '')
   const ui = await $.ui.mount({ plugin: 'proof9', surface: 'mobile', component: 'Pane', requestId: 'proof9', props: PROPS })
   expect(await ui.find({ type: 'Text', text: /^✓✗○$/ })).toBeDefined()
+})
+
+test('the pane never reads cf proof status (it reverts expired waivers)', async ($, on) => {
+  const w = world(on)
+  await proof($, '')
+  const ui = await pane($)
+  await ui.press({ key: 'run' })
+  expect(w.argvs.some(a => a.startsWith('cf proof status'))).toBe(false)
 })

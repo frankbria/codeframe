@@ -123,13 +123,11 @@ class TestList:
     def test_an_empty_ledger_is_an_empty_list(self, ws):
         result = _cf("list", "-w", str(ws), "--json")
         assert result.exit_code == 0
-        assert _doc(result) == {"requirements": []}
+        assert _doc(result)["requirements"] == []
 
     def test_the_status_filter_applies(self, ws):
         _capture(ws)
-        assert _doc(_cf("list", "-w", str(ws), "--status", "waived", "--json")) == {
-            "requirements": []
-        }
+        assert _doc(_cf("list", "-w", str(ws), "--status", "waived", "--json"))["requirements"] == []
 
 
 class TestStatus:
