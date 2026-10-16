@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- **A moved or copied repo checks its own tree** (#1515). The workspace kept
+  the absolute path it was created at, so after a move every proof check came
+  back "not collected", and after a copy `cf proof run` tested the original
+  directory and could pass while the copy was broken. The path now comes from
+  where `.codeframe/` is found.
+
 ### Removed
 
 - **The web UI, the server, and everything only they used** (#1477). The
