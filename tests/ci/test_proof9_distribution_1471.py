@@ -72,7 +72,9 @@ def test_the_type_check_covers_hooks_tests_and_state_contract():
 def test_the_plugin_job_gates_the_summary():
     summary = _jobs()["test-summary"]
     assert "proof9-plugin" in summary["needs"]
-    assert "needs.proof9-plugin.result" in _steps_text(summary)
+    gate = _steps_text(summary)
+    for state in ("failure", "cancelled", "timed_out"):
+        assert f'"${{{{ needs.proof9-plugin.result }}}}" == "{state}"' in gate
 
 
 def test_installs_do_not_ship_the_vendored_types():

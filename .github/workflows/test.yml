@@ -385,6 +385,7 @@ jobs:
     name: proof9 Plugin
     runs-on: ubuntu-latest
     needs: code-quality
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -675,7 +676,9 @@ jobs:
              [ "${{ needs.e2e-browser-smoke.result }}" == "cancelled" ] || \
              [ "${{ needs.e2e-browser-smoke.result }}" == "timed_out" ] || \
              [ "${{ needs.frontend-tests.result }}" == "failure" ] || \
-             [ "${{ needs.proof9-plugin.result }}" == "failure" ]; then
+             [ "${{ needs.proof9-plugin.result }}" == "failure" ] || \
+             [ "${{ needs.proof9-plugin.result }}" == "cancelled" ] || \
+             [ "${{ needs.proof9-plugin.result }}" == "timed_out" ]; then
             {
               echo ""
               echo "❌ Some checks failed. Please review the logs above."
