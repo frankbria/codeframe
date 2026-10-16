@@ -1,6 +1,13 @@
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { isGitCommit } from './commit.ts'
+import type { Failing } from '../types'
+import { isGitCommit, runsCfProof } from './commit.ts'
+
+const failingAtom = atom({ plugin: 'proof9', key: 'failing' } as const, [])
+const dismissedAtom = atom({ plugin: 'proof9', key: 'dismissed' } as const, [])
+const emptyAtom = atom({ plugin: 'proof9', key: 'emptyLedger' } as const, false)
+const waivingAtom = atom({ plugin: 'proof9', key: 'waiving' } as const, null)
 
 // The CLI is the product; this plugin is a front door. Every call is `cf … --json`
 // by argv (no shell), and nothing here repeats what the CLI decides.
@@ -186,14 +193,92 @@ async function checkVersion($: EngineInterface): Promise<boolean> {
   return true
 }
 
-/** The status line: `proof9 · N obligations · M failing`, cleared without a workspace. */
-async function refreshStatus($: EngineInterface): Promise<void> {
-  const ran = await cf($, ['proof', 'status', '--json'], 10_000)
-  const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<{ counts: { total: number; failing: number } }>(ran)
-  if (!doc) return $.ui.status(undefined)
-  const { total, failing } = doc.counts
-  const noun = total === 1 ? 'obligation' : 'obligations'
-  $.ui.status(total ? `proof9 · ${total} ${noun} · ${failing} failing` : 'proof9 · no obligations yet')
+type Listed = {
+  requirements: {
+    id: string
+    title: string
+    status: string
+    obligations: { gate: string; status: string }[]
+    evidence_rules: { test_id: string; gate: string | null }[]
+    waiver: { expired: boolean } | null
+  }[]
+}
+
+const failureKey = (f: Failing) => `${f.id}:${f.tests.join(',')}`
+
+async function emptyHiddenKey($: EngineInterface): Promise<string> {
+  // Outside a git repo, the directory: a shared empty key would hide the band everywhere.
+  const root = (await attempt(() => $.session.repo()))?.root ?? (await attempt(() => $.session.cwd()))
+  return `emptyHidden:${root ?? ''}`
+}
+
+/**
+ * Reads the ledger and refreshes everything drawn from it: the status line
+ * (`proof9 · N obligations · M failing`) and the band. The ledger, not the last
+ * run, is the source: a scoped run that does not touch a still-failing
+ * requirement must not clear its band.
+ */
+async function refreshLedger($: EngineInterface): Promise<void> {
+  const ran = await cf($, ['proof', 'list', '--json'], 10_000)
+  const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<Listed>(ran)
+  // A ledger that cannot be read leaves the last known state: a transient error
+  // must not make a failing requirement's band vanish.
+  if (!doc) return
+  const reqs = doc.requirements
+  // Failing as `cf proof status` counts it (#1488): not waived, a failed obligation.
+  // A lapsed waiver no longer covers it — read-only, as the merge gate decides
+  // (#1276); `list`, unlike `status`, does not revert the stored status.
+  const waived = (r: Listed['requirements'][number]) => r.status === 'waived' && !r.waiver?.expired
+  const failing: Failing[] = reqs
+    .filter(r => !waived(r) && r.obligations.some(o => o.status === 'failed'))
+    .map(r => {
+      const gates = r.obligations.filter(o => o.status === 'failed').map(o => o.gate)
+      const tests = r.evidence_rules.filter(t => t.gate !== null && gates.includes(t.gate)).map(t => t.test_id)
+      return { id: r.id, title: r.title, tests: tests.length ? tests : gates.map(g => `the ${g} gate (no named test)`) }
+    })
+  const noun = reqs.length === 1 ? 'obligation' : 'obligations'
+  $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
+  await update($, failingAtom, () => failing)
+  // A dismissal ends with its failure, so a later regression shows again.
+  const live = new Set(failing.map(failureKey))
+  await update($, dismissedAtom, keys => keys.filter(k => live.has(k)))
+  const hidden = Boolean(await attempt(async () => $.store.get(await emptyHiddenKey($))))
+  await update($, emptyAtom, () => reqs.length === 0 && !hidden)
+}
+
+/** Appends a notice to the transcript: the person reads it, the model does not. */
+async function notice($: EngineInterface, text: string): Promise<void> {
+  await $.session.append({ message: { type: 'system', content: [{ type: 'text', text }] } })
+}
+
+async function askToFix($: EngineInterface, failing: Failing[]): Promise<void> {
+  const list = failing.map(f => `- ${f.id} "${f.title}": ${f.tests.join(', ')}`).join('\n')
+  await $.prompt.submit({
+    text: `proof9: these proven requirements fail:\n${list}\nFix the code so these tests pass again; do not weaken or delete the tests. Then run \`cf proof run\` to re-check them.`,
+  })
+}
+
+async function showEvidence($: EngineInterface, id: string): Promise<void> {
+  // shortcut: plain `cf proof show` text until the /proof pane (#1491) draws it.
+  const ran = await cf($, ['proof', 'show', id])
+  await notice($, 'failed' in ran ? cannotRun(ran.failed) : (ran.stdout || errorText(ran)).trim())
+}
+
+async function waive($: EngineInterface, id: string, typed: string): Promise<void> {
+  const m = /^(.*?)\s+until\s+(\d{4}-\d{2}-\d{2})\s*$/.exec(typed.trim())
+  const reason = (m?.[1] ?? typed).trim()
+  if (!reason) {
+    $.ui.toast('proof9: a reason is required to waive a requirement.')
+    return
+  }
+  const ran = await cf($, ['proof', 'waive', id, '--reason', reason, ...(m ? ['--expires', m[2] ?? ''] : [])])
+  if ('failed' in ran || ran.exitCode !== 0) {
+    // Keep the input open with what was typed; say why it was refused.
+    $.ui.toast(`proof9 could not waive ${id}: ${'failed' in ran ? ran.failed : errorText(ran)}`)
+    return
+  }
+  await update($, waivingAtom, () => null)
+  await refreshLedger($)
 }
 
 type ProofRun = {
@@ -267,26 +352,32 @@ export const register: Register = (on, options) => {
       description: 'Capture a bug as a permanent proof obligation (or: /proof ratchet)',
       argumentHint: '<what went wrong> | ratchet [--dry-run]',
     })
-    if (await checkVersion($)) await refreshStatus($)
+    if (await checkVersion($)) await refreshLedger($)
     return next(e)
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (!isGitCommit(e.command)) return next(e)
+    if (!isGitCommit(e.command)) {
+      if (!runsCfProof(e.command)) return next(e)
+      // Claude ran the proof itself (say, after "Ask Claude to fix"): redraw from the ledger.
+      const ran = await next(e)
+      await attempt(() => refreshLedger($))
+      return ran
+    }
     const verdict = await preCommitVerdict($, timeoutSeconds)
     if (verdict.kind === 'error' && block) {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
     }
     if (verdict.kind === 'failing' && block) {
       $.ui.toast(verdict.person)
-      await attempt(() => refreshStatus($))
+      await attempt(() => refreshLedger($))
       return { deny: verdict.deny }
     }
     if (verdict.kind !== 'quiet') {
       $.ui.toast(verdict.kind === 'error' ? `proof9 could not check this commit: ${verdict.person}` : verdict.person)
     }
     const ran = await next(e)
-    await attempt(() => refreshStatus($))
+    await attempt(() => refreshLedger($))
     // Warn mode: Claude reads the failures after the commit's own output and can fix them now.
     return verdict.kind === 'failing' && ran.deny === undefined
       ? { ...ran, context: [...(ran.context ?? []), verdict.claude] }
@@ -294,6 +385,78 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) =>
     next.called || !block ? next(e) : { deny: 'proof9: its pre-commit check failed; block mode fails closed.' },
   )
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const table = $.ui.resolve(e)
+    const { Box, Button, Text } = table
+    const Input = 'Input' in table ? table.Input : undefined
+    const dismissed = await read($, dismissedAtom)
+    const shown = (await read($, failingAtom)).filter(f => !dismissed.includes(failureKey(f)))
+    const first = shown[0]
+    if (first) {
+      if (Input && (await read($, waivingAtom)) === first.id) {
+        return (
+          <Box>
+            <Text>Waive {first.id}: </Text>
+            <Input
+              key="waive-reason"
+              placeholder="reason (required); add ' until YYYY-MM-DD' for an expiry"
+              autoFocus
+              onSubmit={value => waive($, first.id, value)}
+            />
+            <Button key="cancel" label="Cancel" onPress={() => update($, waivingAtom, () => null)} />
+          </Box>
+        )
+      }
+      const more = shown.length > 1 ? ` (+${shown.length - 1} more)` : ''
+      return (
+        <Box flexDirection="column">
+          <Text color="red">
+            proof9: {first.id} "{first.title}" fails: {first.tests.join(', ')}{more}
+          </Text>
+          <Box>
+            <Button key="fix" label="Ask Claude to fix" variant="primary" onPress={() => askToFix($, shown)} />
+            <Button key="evidence" label="Show evidence" onPress={() => showEvidence($, first.id)} />
+            {Input ? <Button key="waive" label="Waive…" onPress={() => update($, waivingAtom, () => first.id)} /> : null}
+            <Button
+              key="dismiss"
+              label="Dismiss"
+              role="dismiss"
+              onPress={() => update($, dismissedAtom, keys => [...keys, failureKey(first)])}
+            />
+          </Box>
+        </Box>
+      )
+    }
+    if (await read($, emptyAtom)) {
+      return (
+        <Box>
+          <Text>proof9: No proof obligations yet. </Text>
+          <Button
+            key="ratchet"
+            label="Lock in passing tests"
+            variant="primary"
+            onPress={async () => {
+              await notice($, await ratchet($, []))
+              await refreshLedger($)
+            }}
+          />
+          <Button key="capture" label="Capture a bug" onPress={() => $.prompt.fill({ text: '/proof ' })} />
+          <Button
+            key="dismiss-empty"
+            label="Dismiss"
+            role="dismiss"
+            onPress={async () => {
+              await $.store.set(await emptyHiddenKey($), true)
+              await update($, emptyAtom, () => false)
+            }}
+          />
+        </Box>
+      )
+    }
+    return next(e)
+  })
 
   on('command.run', { command: 'proof' }, async ($, e) => {
     const args = e.args.trim()

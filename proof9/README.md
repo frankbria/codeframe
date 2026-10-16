@@ -40,6 +40,14 @@ the commit, never less, so an unstaged change that breaks a requirement is
 reported (and, in block mode, blocks the commit) even though it is not being
 committed. Commits made outside Claude's Bash tool are not checked.
 
+## The band above the prompt
+
+When the ledger records a failing requirement, a band above the prompt names it
+and its test, with **Ask Claude to fix**, **Show evidence**, **Waive…** (a
+reason is required; add ` until YYYY-MM-DD` for an expiry) and **Dismiss**. It
+clears once a later run passes the requirement. With an empty ledger it offers
+**Lock in passing tests** and **Capture a bug**, once per repository.
+
 **Settings** (`/config`, or `pluginConfigs.proof9.options` in settings.json):
 
 | Setting | Default | |
