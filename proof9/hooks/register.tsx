@@ -309,8 +309,9 @@ function rowLabel(r: LedgerRequirement): string {
 const rowOrder = (r: LedgerRequirement) =>
   isFailing(r) ? 0 : r.status === 'open' ? 1 : r.status === 'satisfied' ? 2 : 3
 
-/** The characters that make markup mid-line escaped, so ledger text is shown, never rendered. */
-const md = (text: string) => text.replace(/([\\`*_[\]()#|<>~])/g, '\\$1')
+/** Ledger text made safe inside the plugin's Markdown: on one line, so it can never start a
+ *  block (a rule, heading or list), with mid-line markup characters escaped. Shown, never rendered. */
+const md = (text: string) => text.replace(/\s*\n\s*/g, ' ').replace(/([\\`*_[\]()#|<>~])/g, '\\$1')
 
 type Shown = {
   requirement: LedgerRequirement & {

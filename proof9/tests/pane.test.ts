@@ -27,7 +27,7 @@ const RUNS = [
 ]
 const SHOW = {
   requirement: {
-    ...req('REQ-0002', 'Login *500s* on [an](http://x) empty form', 'open', 'failed'),
+    ...req('REQ-0002', 'Login *500s* on [an](http://x) empty form\n---\n# Pwned\n1. list', 'open', 'failed'),
     scope: { files: ['src/auth.py'], routes: [], apis: [], components: [], tags: [] },
   },
   evidence: [{ gate: 'unit', status: 'failed', artifact_path: '/x/a.txt', artifact_checksum: 'abc123', run_id: 'r2', timestamp: '2026-10-16T09:00:00+00:00' }],
@@ -142,6 +142,10 @@ describe('detail and buttons', () => {
     expect(detail).toContain('src/auth.py')
     expect(detail).toContain('\\*500s\\*')
     expect(detail).toContain('\\[an\\]')
+    // A newline in ledger text cannot start a Markdown block (rule, heading, list).
+    const titleLine = detail.split('\n')[0] ?? ''
+    expect(titleLine).toContain('Pwned')
+    expect(detail).not.toMatch(/^(---|#|1\.)/m)
   })
 
   test('Ask Claude to fix appears for a failing requirement and queues the prompt', async ($, on) => {
