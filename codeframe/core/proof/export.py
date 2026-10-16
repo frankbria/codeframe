@@ -37,7 +37,7 @@ def _commit(repo_path: Path) -> str | None:
     try:
         ran = subprocess.run(
             ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -172,7 +172,7 @@ def render_pdf(html: str, out: Path) -> None:
             [browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
              f"--user-data-dir={Path(tmp) / 'profile'}",
              f"--print-to-pdf={Path(out).resolve()}", page.as_uri()],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
         )
     if ran.returncode != 0 or not Path(out).exists():
         raise RuntimeError(f"{browser} could not print the report: {ran.stderr.strip()[-500:]}")
