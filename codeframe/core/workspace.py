@@ -117,13 +117,11 @@ def _get_state_dir(repo_path: Path) -> Path:
 def _open_db(db_path: str | Path) -> sqlite3.Connection:
     """Open a workspace SQLite connection with concurrency safeguards.
 
-    Mirrors ``codeframe/platform_store/database.py``. The substantive change is
-    enabling **WAL journaling**: readers no longer block writers, which removes
+    The substantive setting is **WAL journaling**: readers no longer block writers, which removes
     the rollback-journal case where a writer hits ``database is locked``
     immediately (the busy handler is skipped for that reader/writer deadlock).
     WAL is a persistent, database-level setting, so applying it on every
-    connection is idempotent. ``busy_timeout`` is set to 5000ms to match
-    platform_store and make the value explicit (Python's ``sqlite3.connect``
+    connection is idempotent. ``busy_timeout`` is set to 5000ms to make the value explicit (Python's ``sqlite3.connect``
     already defaults to a 5s timeout). Matters under parallel batch execution
     where multiple processes and background agent threads write the same DB.
 
@@ -888,16 +886,6 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
 
     state_dir = _get_state_dir(repo_path)
     db_path = state_dir / STATE_DB_NAME
-
-    # A serve-first install under the pre-#1287 default left the control plane
-    # (accounts, API keys) in state.db with no workspace row. Move it to
-    # platform.db once (#1376) BEFORE anything loads it as a workspace:
-    # get_workspace's schema upgrade would stamp the workspace user_version
-    # over the control plane's and SchemaManager would then skip its own
-    # migrations on the copy (GLM review).
-    from codeframe.platform_store.database import migrate_legacy_control_plane
-
-    migrate_legacy_control_plane(state_dir)
 
     # Check if workspace already exists
     if state_dir.exists() and db_path.exists():
