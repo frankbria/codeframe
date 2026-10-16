@@ -44,7 +44,8 @@ function ratchetFlags(args: string): string[] | null | undefined {
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i]
     if (token === '--dry-run') flags.push(token)
-    else if (token === '--path' && rest[i + 1]) flags.push(token, rest[++i] ?? '')
+    // A flag in the glob's place would make cf take it as the glob: `--path --dry-run` ran for real.
+    else if (token === '--path' && rest[i + 1] && !rest[i + 1]?.startsWith('-')) flags.push(token, rest[++i] ?? '')
     else return null
   }
   return flags

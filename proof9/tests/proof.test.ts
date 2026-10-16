@@ -216,7 +216,7 @@ describe('/proof ratchet', () => {
 
   test('an unknown ratchet flag shows usage and creates nothing', async ($, on) => {
     const w = world(on, capture)
-    for (const args of ['ratchet --dryrun', 'ratchet --path', 'ratchet --dry-run extra']) {
+    for (const args of ['ratchet --dryrun', 'ratchet --path', 'ratchet --dry-run extra', 'ratchet --path --dry-run']) {
       const out = await proof($, args)
       expect(out.text).toContain('/proof ratchet')
     }
