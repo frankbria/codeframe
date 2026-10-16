@@ -34,6 +34,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the whole suite, so re-checking a ratchet of N tests cost N processes. The
   verdicts are the same: exact names, a missing test fails its own rule, a
   skip is not evidence.
+- **proof9 checks proof obligations before every commit** (#1470). When
+  Claude runs `git commit`, the plugin runs `cf proof run` first. In warn
+  mode (the default) failures are shown to you and handed to Claude with the
+  commit's output, so it can fix the regression; the commit goes ahead. In
+  block mode (`mode: block`) they deny the commit. A missing CLI, an error or
+  the time limit (`timeoutSeconds`, default 120) lets the commit through in
+  warn mode and denies it in block mode. The status line shows the ledger's
+  obligations and failures.
 
 ### Documentation
 

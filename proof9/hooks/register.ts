@@ -1,5 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 
+import { isGitCommit } from './commit.ts'
+
 // The CLI is the product; this plugin is a front door. Every call is `cf … --json`
 // by argv (no shell), and nothing here repeats what the CLI decides.
 
@@ -165,32 +167,133 @@ function isOlder(found: number[], min: readonly number[]): boolean {
   return false
 }
 
-async function checkVersion($: EngineInterface): Promise<void> {
+/** Toasts what is wrong with the installed cf; true when it is usable. */
+async function checkVersion($: EngineInterface): Promise<boolean> {
   const ran = await cf($, ['--version'], 10_000)
   if ('failed' in ran) {
     $.ui.toast(`proof9 needs the codeframe CLI. Install it with: ${INSTALL}`)
-    return
+    return false
   }
   if (ran.exitCode !== 0) {
     $.ui.toast(`proof9: \`cf --version\` failed (${errorText(ran).split('\n')[0]}). Try: ${UPGRADE}`)
-    return
+    return false
   }
   const found = parseVersion(ran.stdout)
   if (found && isOlder(found, MIN_VERSION)) {
     $.ui.toast(`proof9 needs codeframe ${MIN_VERSION.join('.')} or later; found ${found.join('.')}. Run: ${UPGRADE}`)
+    return false
   }
+  return true
 }
 
-export const register: Register = on => {
+/** The status line: `proof9 · N obligations · M failing`, cleared without a workspace. */
+async function refreshStatus($: EngineInterface): Promise<void> {
+  const ran = await cf($, ['proof', 'status', '--json'], 10_000)
+  const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<{ counts: { total: number; failing: number } }>(ran)
+  if (!doc) return $.ui.status(undefined)
+  const { total, failing } = doc.counts
+  const noun = total === 1 ? 'obligation' : 'obligations'
+  $.ui.status(total ? `proof9 · ${total} ${noun} · ${failing} failing` : 'proof9 · no obligations yet')
+}
+
+type ProofRun = {
+  failed: boolean
+  vacuous: boolean
+  empty_reason: string | null
+  description: string | null
+  requirements: { id: string; title: string; gates: { gate: string; outcome: string; tests: string[] }[] }[]
+}
+
+/** What a pre-commit proof run found, in the words each audience needs. */
+type Verdict =
+  | { kind: 'failing'; person: string; claude: string; deny: string }
+  | { kind: 'note'; person: string }
+  | { kind: 'error'; person: string }
+  | { kind: 'quiet' }
+
+async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Promise<Verdict> {
+  // Plain `cf proof run`: its scope is the working tree (modified + staged +
+  // untracked), a superset of what the commit holds, so it checks more, never less.
+  const ran = await cf($, ['proof', 'run', '--json'], timeoutSeconds * 1000)
+  if ('failed' in ran) {
+    if (/timed out/i.test(ran.failed)) {
+      return { kind: 'error', person: `the proof run was cut short after ${timeoutSeconds} s` }
+    }
+    return { kind: 'error', person: cannotRun(ran.failed).replace(/\n/g, ' ') }
+  }
+  const doc = parse<ProofRun>(ran)
+  // Exit 1 means a failure: without `failed: true` beside it the document is not
+  // one we can read, and block mode must not wave the commit through.
+  if (!doc || typeof doc.failed !== 'boolean' || ![0, 1, 2].includes(ran.exitCode) || (ran.exitCode === 1 && !doc.failed)) {
+    return { kind: 'error', person: `cf proof run failed: ${errorText(ran).split('\n')[0]}` }
+  }
+  if (doc.failed) {
+    const broken = doc.requirements
+      .map(r => ({ ...r, tests: r.gates.filter(g => g.outcome === 'failed').flatMap(g => g.tests.length ? g.tests : [`${g.gate} gate`]) }))
+      .filter(r => r.tests.length)
+    const list = broken.map(r => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`)
+    if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
+    return {
+      kind: 'failing',
+      person: broken.length
+        ? `proof9: ${broken.length} proven requirement(s) fail: ${broken.map(r => r.id).join(', ')}`
+        : 'proof9: the proof run reported a failure',
+      // The run checks the working tree, which can hold more than the commit.
+      claude: [
+        'proof9: your working tree breaks requirements that were proven to hold:',
+        ...list.map(l => `- ${l}`),
+        'Fix the code so these tests pass again; do not weaken or delete the tests. `cf proof run` re-checks them.',
+      ].join('\n'),
+      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
+    }
+  }
+  if (doc.empty_reason === 'no_requirements') {
+    return { kind: 'note', person: 'proof9: no proof obligations yet. Capture a bug with /proof, or lock in passing tests with /proof ratchet.' }
+  }
+  if (doc.vacuous || ran.exitCode === 2) {
+    return { kind: 'note', person: `proof9: nothing was verified${doc.description ? ` (${doc.description})` : ''}; this is not a pass.` }
+  }
+  return { kind: 'quiet' }
+}
+
+export const register: Register = (on, options) => {
+  const block = options.mode === 'block'
+  const limit = options.timeoutSeconds
+  const timeoutSeconds = typeof limit === 'number' && limit > 0 ? limit : 120
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'proof',
       description: 'Capture a bug as a permanent proof obligation (or: /proof ratchet)',
       argumentHint: '<what went wrong> | ratchet [--dry-run]',
     })
-    await checkVersion($)
+    if (await checkVersion($)) await refreshStatus($)
     return next(e)
   })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (!isGitCommit(e.command)) return next(e)
+    const verdict = await preCommitVerdict($, timeoutSeconds)
+    if (verdict.kind === 'error' && block) {
+      return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
+    }
+    if (verdict.kind === 'failing' && block) {
+      $.ui.toast(verdict.person)
+      await attempt(() => refreshStatus($))
+      return { deny: verdict.deny }
+    }
+    if (verdict.kind !== 'quiet') {
+      $.ui.toast(verdict.kind === 'error' ? `proof9 could not check this commit: ${verdict.person}` : verdict.person)
+    }
+    const ran = await next(e)
+    await attempt(() => refreshStatus($))
+    // Warn mode: Claude reads the failures after the commit's own output and can fix them now.
+    return verdict.kind === 'failing' && ran.deny === undefined
+      ? { ...ran, context: [...(ran.context ?? []), verdict.claude] }
+      : ran
+  }).catch(($, e, next) =>
+    next.called || !block ? next(e) : { deny: 'proof9: its pre-commit check failed; block mode fails closed.' },
+  )
 
   on('command.run', { command: 'proof' }, async ($, e) => {
     const args = e.args.trim()

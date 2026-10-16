@@ -19,6 +19,34 @@ uv tool install codeframe-ai
 
 Captures work in any git repository; the first one creates `.codeframe/`.
 
+## Before every commit
+
+When Claude runs `git commit`, proof9 runs `cf proof run` first.
+
+- **Warn (default):** failing obligations show a warning, and Claude reads which
+  requirement and test failed right after the commit's output, so it can fix the
+  regression in the same turn. The commit goes ahead.
+- **Block:** failing obligations deny the commit, naming the requirement and test.
+  If the check itself cannot run (no `cf`, an error, the time limit), block mode
+  denies too; warn mode lets the commit through with a warning.
+
+An empty ledger, or a run that verified nothing, is reported as such and never
+counts as a pass. Neither blocks. The status line shows
+`proof9 · N obligations · M failing`.
+
+The check covers your working tree (modified, staged and untracked files), which
+is everything the commit can contain and possibly more. It can check more than
+the commit, never less, so an unstaged change that breaks a requirement is
+reported (and, in block mode, blocks the commit) even though it is not being
+committed. Commits made outside Claude's Bash tool are not checked.
+
+**Settings** (`/config`, or `pluginConfigs.proof9.options` in settings.json):
+
+| Setting | Default | |
+|---|---|---|
+| `mode` | `warn` | `warn` or `block` |
+| `timeoutSeconds` | `120` | Time limit for the pre-commit run |
+
 ## Developing
 
 ```bash

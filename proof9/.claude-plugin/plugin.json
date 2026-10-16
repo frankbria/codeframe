@@ -2,8 +2,28 @@
   "name": "proof9",
   "version": "0.1.0",
   "description": "Turn a bug into a permanent, enforced proof obligation.",
-  "author": { "name": "Frank Bria" },
+  "author": {
+    "name": "Frank Bria"
+  },
   "homepage": "https://codeframe.sh",
   "repository": "https://github.com/frankbria/codeframe",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "userConfig": {
+    "mode": {
+      "type": "string",
+      "title": "On failing proof obligations",
+      "description": "warn: report failures and let the commit proceed. block: deny the commit.",
+      "default": "warn",
+      "options": [
+        "warn",
+        "block"
+      ]
+    },
+    "timeoutSeconds": {
+      "type": "number",
+      "title": "Proof run time limit (seconds)",
+      "description": "How long the pre-commit proof run may take before it is cut short.",
+      "default": 120
+    }
+  }
 }
