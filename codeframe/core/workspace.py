@@ -1112,7 +1112,9 @@ def get_workspace(repo_path: Path) -> Workspace:
 
     return Workspace(
         id=row[0],
-        repo_path=Path(row[1]),
+        # Where .codeframe/ is now, not the stored creation path: a moved or
+        # copied repo would otherwise run its proof checks in the old tree (#1515).
+        repo_path=repo_path,
         state_dir=state_dir,
         created_at=datetime.fromisoformat(row[3]),
         tech_stack=row[2],
