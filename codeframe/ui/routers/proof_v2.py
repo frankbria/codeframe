@@ -475,9 +475,9 @@ async def run_proof_endpoint(
 ) -> RunProofResponse:
     """Execute proof obligations and collect evidence.
 
-    Runs gate checks (pytest, ruff, etc.) for open requirements and records
-    evidence artifacts. Use full=True to run all obligations regardless of
-    changed scope.
+    Runs gate checks (pytest, ruff, etc.) for open requirements, and for
+    satisfied ones the current changes touch (#1484), and records evidence
+    artifacts. Use full=True to run all obligations regardless of changed scope.
     """
     try:
         # Generate run_id before calling run_proof so the response ID matches evidence records

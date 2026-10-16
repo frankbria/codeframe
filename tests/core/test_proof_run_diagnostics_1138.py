@@ -21,6 +21,7 @@ from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.models import (
     PROOF_CONFIG_FILENAME,
     Gate,
+    RequirementScope,
     Severity,
     Source,
     Waiver,
@@ -84,7 +85,8 @@ class TestEachReasonIsReported:
             "codeframe.core.proof.runner.intersects", lambda scope, changed: False
         )
         monkeypatch.setattr(
-            "codeframe.core.proof.runner.get_changed_scope", lambda ws: object()
+            "codeframe.core.proof.runner.get_changed_scope",
+            lambda ws: RequirementScope(files=["unrelated.py"]),  # #1484 reads .files
         )
 
         results, diagnostics = run_proof_with_diagnostics(workspace)
@@ -280,7 +282,8 @@ class TestScopeSkippedIsStillLogged:
             "codeframe.core.proof.runner.intersects", lambda scope, changed: False
         )
         monkeypatch.setattr(
-            "codeframe.core.proof.runner.get_changed_scope", lambda ws: object()
+            "codeframe.core.proof.runner.get_changed_scope",
+            lambda ws: RequirementScope(files=["unrelated.py"]),  # #1484 reads .files
         )
 
         with caplog.at_level("WARNING"):
