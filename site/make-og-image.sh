@@ -6,7 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # COPY: card strings
-TITLE="CodeFRAME"
 LINE1="A project delivery system"
 LINE2="for AI-written software."
 PIPE="Think → Build → Prove → Ship"
@@ -17,12 +16,12 @@ BOLD="$FONTS/DejaVuSans-Bold.ttf" SANS="$FONTS/DejaVuSans.ttf" MONO="$FONTS/Deja
 
 # Strings go through textfile= so quotes, colons and commas in copy can't break the filtergraph.
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-for k in TITLE LINE1 LINE2 PIPE URL; do printf '%s' "${!k}" > "$T/$k"; done
+for k in LINE1 LINE2 PIPE URL; do printf '%s' "${!k}" > "$T/$k"; done
 
-# Colors are the web UI's dark gray tokens (hsl 220 9% 6% / 98% / 65%).
-ffmpeg -v error -y -f lavfi -i "color=c=0x0e0f11:s=1200x630" -frames:v 1 -vf "\
-drawbox=x=80:y=96:w=64:h=6:color=0xfafafa:t=fill,\
-drawtext=fontfile=$BOLD:textfile=$T/TITLE:expansion=none:fontsize=96:fontcolor=0xfafafa:x=80:y=130,\
+# Dark card (hsl 220 9% 6% / 98% / 65%) with the reverse lockup, the variant
+# for dark surfaces (brand rules, #1476).
+ffmpeg -v error -y -f lavfi -i "color=c=0x0e0f11:s=1200x630" -i codeframe-lockup-reverse.png -frames:v 1 \
+  -filter_complex "[1:v]scale=560:-1[logo];[0:v][logo]overlay=x=65:y=110,\
 drawtext=fontfile=$SANS:textfile=$T/LINE1:expansion=none:fontsize=52:fontcolor=0xfafafa:x=80:y=280,\
 drawtext=fontfile=$SANS:textfile=$T/LINE2:expansion=none:fontsize=52:fontcolor=0xfafafa:x=80:y=346,\
 drawtext=fontfile=$MONO:textfile=$T/PIPE:expansion=none:fontsize=32:fontcolor=0x9fa3ab:x=80:y=460,\

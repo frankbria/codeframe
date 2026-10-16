@@ -8,8 +8,9 @@
   <meta name="description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://codeframe.sh/">
-  <!-- No logo yet; an empty icon stops the browser requesting /favicon.ico. -->
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- Social card. Crawlers need absolute URLs; regenerate the image with make-og-image.sh. -->
   <meta property="og:type" content="website">
@@ -42,7 +43,8 @@
     a { color: var(--link); text-underline-offset: 3px; }
     a:focus-visible { outline: 3px solid var(--muted); outline-offset: 2px; border-radius: 2px; }
     code { font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-    .brand { font-weight: 700; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 24px; }
+    .brand { display: block; margin-bottom: 24px; }
+    .brand img { display: block; height: auto; }
     .lede { color: var(--muted); font-size: 1.1rem; }
     figure { margin: 28px 0 0; }
     figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
@@ -58,7 +60,10 @@
 <body>
 <main>
   <header>
-    <div class="brand">CodeFRAME™</div>
+    <picture class="brand">
+      <source srcset="codeframe-lockup-reverse.svg" media="(prefers-color-scheme: dark)">
+      <img src="codeframe-lockup-primary.svg" alt="CodeFRAME" width="240" height="49">
+    </picture>
     <!-- COPY: one sentence for someone who has never heard of it (README header) -->
     <h1>A project delivery system for AI-written software.</h1>
     <p class="lede">CodeFRAME owns everything before and after the code: requirements, task planning,
