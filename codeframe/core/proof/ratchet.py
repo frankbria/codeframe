@@ -36,8 +36,9 @@ from codeframe.core.proof.models import (
 )
 from codeframe.core.workspace import Workspace
 
-# A whole suite, not one test: the gate runner's 5 minutes is too short.
-SUITE_TIMEOUT_SECONDS = 1800
+# A whole suite, not one test: the gate runner's 5 minutes is too short. One
+# budget with the runner's batches, which run at most the same suite (#1485).
+SUITE_TIMEOUT_SECONDS = core_gates.PYTEST_BATCH_TIMEOUT_SECONDS
 
 # Scope for a test whose covered files are unknown: the repository root, which
 # `scope._files_intersect` treats as covering every file (fail closed).

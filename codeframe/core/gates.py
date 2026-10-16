@@ -760,8 +760,8 @@ class PytestVerdicts:
 #: cap on one argv string, which a big ratchet's expression exceeded.
 PYTEST_BATCH_SIZE = 400
 
-#: A batch runs at most the whole suite, so it gets the budget the ratchet's
-#: full-suite run has (``ratchet.SUITE_TIMEOUT_SECONDS``), not one test's 300 s.
+#: A batch runs at most the whole suite, so it gets a whole suite's budget, not
+#: one test's 300 s. ``cf proof ratchet``'s full-suite run uses this too.
 PYTEST_BATCH_TIMEOUT_SECONDS = 1800
 
 _RUNNABLE_NAME = re.compile(r"test_\w+")
