@@ -61,6 +61,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   plugin on every PR (`proof9-plugin`) against vendored API types in
   `tools/proof9-types/`, installing the Claude Code version that wrote them.
 
+### Added (evidence report)
+
+- **`cf proof export --format html|json|pdf`** (#1472): the evidence report
+  to hand to someone who has never seen CodeFRAME. A cover with provenance
+  (repository, commit, tool version, time), every requirement with its
+  scope, source and state (satisfied, open, waived, waiver expired), its
+  evidence with checksums re-verified on export (failing evidence is shown
+  as FAILS VERIFICATION, never upgraded), the run history with vacuous runs
+  marked, every waiver with approver and expiry, and the merge overrides.
+  JSON is the source, HTML renders it with all user text escaped, and PDF
+  prints the HTML with Chrome or Chromium (no new dependency).
+
 ### Fixed
 
 - **A lapsed waiver keeps its record when it reverts** (#1503). Every

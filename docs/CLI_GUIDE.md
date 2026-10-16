@@ -206,6 +206,7 @@ cf proof list                         # List all requirements
 cf proof status                       # Summary across all gates
 cf proof show <id>                    # Requirement detail and evidence
 cf proof waive <id> --reason "..."    # Waive with a justification
+cf proof export --format pdf          # Evidence report: html (default), json or pdf
 
 cf review                             # Run verification gates on the working tree
 cf checkpoint create "milestone"      # Snapshot task state

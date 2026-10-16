@@ -805,6 +805,54 @@ def waive(
         raise typer.Exit(1)
 
 
+@proof_app.command("export")
+def export(
+    fmt: str = typer.Option("html", "--format", "-f", help="json, html or pdf"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Where to write it (default: proof-report.<format> here)",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Workspace path",
+    ),
+) -> None:
+    """Export the evidence report: requirements, evidence with checksums,
+    run history, waivers and merge overrides.
+
+    Made to be handed to someone who has never seen CodeFRAME. JSON is the
+    source; HTML renders it; PDF prints the HTML with Chrome or Chromium.
+
+    Example:
+        codeframe proof export --format pdf --output proof-report.pdf
+    """
+    import json
+
+    from codeframe.core.proof.export import export_document, render_html, render_pdf
+    from codeframe.core.workspace import get_workspace
+
+    if fmt not in ("json", "html", "pdf"):
+        console.print(f"[red]Error:[/red] Unknown format: {escape(fmt)} (use json, html or pdf)")
+        raise typer.Exit(1)
+    try:
+        workspace = get_workspace(repo_path or Path.cwd())
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+
+    out = output or Path(f"proof-report.{fmt}")
+    doc = export_document(workspace)
+    try:
+        if fmt == "json":
+            out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        elif fmt == "html":
+            out.write_text(render_html(doc), encoding="utf-8")
+        else:
+            render_pdf(render_html(doc), out)
+    except (OSError, RuntimeError) as e:
+        print_error(e)
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] Wrote the evidence report to {escape(str(out))}")
+
+
 @proof_app.command("status")
 @_json_capable
 def status_cmd(

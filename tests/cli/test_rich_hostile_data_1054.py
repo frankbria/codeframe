@@ -148,6 +148,7 @@ EXEMPT: dict[str, str] = {
     "proof capture": "covered by the seeded requirement",
     "proof run": "runs the 9 gates, i.e. the project's test suite",
     "proof ratchet": "runs the project's test suite",
+    "proof export": "writes the report to a file; its HTML escaping is pinned by test_proof_export_1472",
     "proof waive": "mutates the seeded requirement `proof show` renders",
     "hooks run": "executes repo-configured shell hooks",
     "hooks set": "edits .codeframe/config.yaml",
