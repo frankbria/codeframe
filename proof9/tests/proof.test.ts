@@ -92,7 +92,7 @@ describe('/proof <text>', () => {
     expect(call?.env).toEqual({ CODEFRAME_CLIENT: 'proof9' })
     expect(out.text).toContain('REQ-0003')
     expect(out.text).toContain('Login 500s on empty password')
-    expect(out.text).toContain('unit and sec')
+    expect(out.text).toContain('unit and security')
     expect(out.text).toContain('tests/proof/REQ-0003/draft_test_unit.py')
     expect(out.text).toContain('Created .codeframe/')
     // #1473: no internal terms a first-time user has not met, and what to do next.

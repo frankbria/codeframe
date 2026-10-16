@@ -25,7 +25,7 @@ const TITLE_MAX = 80
 
 const USAGE = [
   'Usage:',
-  '  /proof <what went wrong>                  capture a bug as a permanent proof obligation',
+  '  /proof <what went wrong>                  record a bug so it stays fixed',
   '  /proof                                    capture the text you selected in the transcript',
   '  /proof ratchet [--dry-run] [--path GLOB]  lock in every test that passes today',
 ].join('\n')
@@ -95,6 +95,12 @@ type Captured = {
 
 const SEVERITIES = ['critical', 'high', 'medium', 'low']
 
+// PROOF9's gate codes in words a first-time reader knows (#1473).
+const GATE_WORDS: Record<string, string> = {
+  unit: 'unit', contract: 'contract', sec: 'security', e2e: 'end-to-end', visual: 'visual',
+  a11y: 'accessibility', perf: 'performance', demo: 'demo', manual: 'manual review',
+}
+
 type CaptureFields = { title: string; description: string; where?: string; severity?: string }
 
 /** `cf proof capture --json`; the summary on success, or what went wrong. */
@@ -115,7 +121,7 @@ async function captureWith($: EngineInterface, f: CaptureFields): Promise<{ ok: 
 
   // Words for someone who has read nothing (#1473): no "obligations" or "stubs".
   const req = doc.requirement
-  const gates = req.obligations.map(o => o.gate)
+  const gates = req.obligations.map(o => GATE_WORDS[o.gate] ?? o.gate)
   const kinds = gates.length > 1 ? `${gates.slice(0, -1).join(', ')} and ${gates.at(-1)}` : gates[0] ?? 'its'
   const lines = [`✓ ${req.id} captured: ${req.title}`, `It will be checked by ${kinds} tests.`]
   const stubs = Object.values(doc.stubs)
@@ -129,7 +135,9 @@ async function captureWith($: EngineInterface, f: CaptureFields): Promise<{ ok: 
 async function capture($: EngineInterface, text: string): Promise<string> {
   const first = (text.split('\n').find(line => line.trim()) ?? text).trim()
   const title = Array.from(first).slice(0, TITLE_MAX).join('').trim()
-  return (await captureWith($, { title, description: text })).text
+  const captured = await captureWith($, { title, description: text })
+  if (captured.ok) await attempt(() => refreshLedger($)) // an open pane shows it at once
+  return captured.text
 }
 
 const CAPTURE_TOOL = {
@@ -269,8 +277,9 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   // A lapsed waiver no longer covers it — read-only, as the merge gate decides
   // (#1276); `list`, unlike `status`, does not revert the stored status.
   const failing: Failing[] = reqs.filter(isFailing).map(toFailing)
-  const noun = reqs.length === 1 ? 'obligation' : 'obligations'
-  $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
+  // The engine prefixes the plugin's name; "requirement" is the word the CLI uses.
+  const noun = reqs.length === 1 ? 'requirement' : 'requirements'
+  $.ui.status(reqs.length ? `${reqs.length} ${noun} · ${failing.length} failing` : 'nothing checked yet')
   await update($, failingAtom, () => failing)
   await update($, ledgerAtom, () => reqs)
   if (doc.runs) await update($, runsAtom, () => doc.runs ?? [])
@@ -349,6 +358,9 @@ async function selectRequirement($: EngineInterface, id: string): Promise<void> 
   }
   await update($, detailAtom, () => lines.join('\n'))
 }
+
+/** `2026-10-16T10:17:19.739+00:00` → `2026-10-16 10:17 UTC` (the CLI reports UTC). */
+const readableTime = (iso: string | null) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC` : 'at an unknown time')
 
 /** One cell per run, oldest first: green passed, red failed, yellow verified nothing. */
 function historyCells(runs: RunSummary[], columns: number): string {
@@ -475,7 +487,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'proof',
-      description: 'Capture a bug as a permanent proof obligation (or: /proof ratchet)',
+      description: 'Record a bug so it stays fixed (or: /proof ratchet to lock in passing tests)',
       argumentHint: '<what went wrong> | ratchet [--dry-run]',
     })
     // A tool that cannot be registered must not cost the rest of session start.
@@ -580,7 +592,7 @@ export const register: Register = (on, options) => {
     if (await read($, emptyAtom)) {
       return (
         <Box>
-          <Text>proof9: No proof obligations yet. </Text>
+          <Text>proof9: Nothing is checked yet. </Text>
           <Button
             key="ratchet"
             label="Lock in passing tests"
@@ -623,17 +635,17 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Text bold>
-          PROOF9 ledger · {ledger.length} {ledger.length === 1 ? 'obligation' : 'obligations'} · {failing.length} failing
+          PROOF9 ledger · {ledger.length} {ledger.length === 1 ? 'requirement' : 'requirements'} · {failing.length} failing
         </Text>
         {runs.length && Raster ? <Raster key="history" columns={columns} rows={1} cells={historyCells(runs, columns)} /> : null}
         {runs.length && !Raster ? (
           <Text>{runs.slice(0, columns).reverse().map(r => (r.vacuous ? '○' : r.passed ? '✓' : '✗')).join('')}</Text>
         ) : null}
         <Text dimColor>
-          {last ? `Last run ${last.started_at ?? ''}: ${lastWord}` : 'No runs yet.'}
+          {last ? `Last run ${readableTime(last.started_at)}: ${lastWord}` : 'No runs yet.'}
         </Text>
         {ledger.length === 0 ? (
-          <Text>{'No proof obligations yet. Capture one with /proof <what went wrong>, or lock in passing tests with /proof ratchet.'}</Text>
+          <Text>{'Nothing is checked yet. Capture a bug with /proof <what went wrong>, or lock in the tests that pass today with /proof ratchet.'}</Text>
         ) : null}
         {ledger.map(r => (
           <Button key={`req-${r.id}`} plain onPress={() => selectRequirement($, r.id)}>

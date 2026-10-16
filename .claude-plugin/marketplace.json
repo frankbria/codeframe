@@ -8,7 +8,7 @@
     {
       "name": "proof9",
       "source": "./proof9",
-      "description": "Turn a bug into a permanent, enforced proof obligation."
+      "description": "Record a bug so it stays fixed: proof9 checks it before every commit."
     }
   ]
 }

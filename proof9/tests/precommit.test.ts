@@ -137,7 +137,7 @@ describe('warn mode (default)', () => {
     const out = await bash($, 'git commit -m x')
     expect(w.toasts).toEqual([])
     expect(out.context).toBeUndefined()
-    expect(w.statuses.at(-1)).toBe('proof9 · 2 obligations · 1 failing')
+    expect(w.statuses.at(-1)).toBe('2 requirements · 1 failing')
   })
 
   test('an empty ledger points at /proof and /proof ratchet and does not block', async ($, on) => {
@@ -285,7 +285,7 @@ describe('review fixes', () => {
   test('one obligation is singular', async ($, on) => {
     const w = world(on, json(PASSING_RUN), json(listed([false])))
     await bash($, 'git commit -m x')
-    expect(w.statuses.at(-1)).toBe('proof9 · 1 obligation · 0 failing')
+    expect(w.statuses.at(-1)).toBe('1 requirement · 0 failing')
   })
 })
 
@@ -299,6 +299,6 @@ describe('status line', () => {
   test('says so when the ledger is empty', async ($, on) => {
     const w = world(on, json(EMPTY_LEDGER, 2), json(listed([])))
     await bash($, 'git commit -m x')
-    expect(w.statuses.at(-1)).toBe('proof9 · no obligations yet')
+    expect(w.statuses.at(-1)).toBe('nothing checked yet')
   })
 })

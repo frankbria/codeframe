@@ -1,7 +1,7 @@
 {
   "name": "proof9",
   "version": "0.1.0",
-  "description": "Turn a bug into a permanent, enforced proof obligation.",
+  "description": "Record a bug so it stays fixed: proof9 checks it before every commit.",
   "author": {
     "name": "Frank Bria"
   },
