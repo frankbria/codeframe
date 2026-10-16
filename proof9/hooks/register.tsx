@@ -395,7 +395,8 @@ async function notice($: EngineInterface, text: string): Promise<void> {
 async function askToFix($: EngineInterface, failing: Failing[]): Promise<void> {
   const list = failing.map(f => `- ${f.id} "${f.title}": ${f.tests.join(', ')}`).join('\n')
   await $.prompt.submit({
-    text: `proof9: these proven requirements fail:\n${list}\nFix the code so these tests pass again; do not weaken or delete the tests. Then run \`cf proof run\` to re-check them.`,
+    // Status-agnostic: a freshly captured requirement was never proven (#1473).
+    text: `proof9: these requirements fail their tests:\n${list}\nIf a test is still a generated draft, fill it in so it fails on the bug. Then fix the code so the tests pass; do not weaken or delete them. Run \`cf proof run\` to re-check.`,
   })
 }
 

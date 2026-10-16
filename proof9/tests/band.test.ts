@@ -94,6 +94,9 @@ describe('failing requirement band', () => {
     expect(w.submitted[0]).toContain('REQ-0003')
     expect(w.submitted[0]).toContain('test_unit_req_0003')
     expect(w.submitted[0]).toMatch(/do not weaken or delete/i)
+    // #1473: a freshly captured requirement was never proven; the prompt must not claim it was.
+    expect(w.submitted[0]).not.toMatch(/proven/i)
+    expect(w.submitted[0]).toMatch(/still a generated draft/i)
   })
 
   test('Show evidence appends cf proof show as a notice', async ($, on) => {
