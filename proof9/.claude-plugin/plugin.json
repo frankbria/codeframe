@@ -1,0 +1,9 @@
+{
+  "name": "proof9",
+  "version": "0.1.0",
+  "description": "Turn a bug into a permanent, enforced proof obligation.",
+  "author": { "name": "Frank Bria" },
+  "homepage": "https://codeframe.sh",
+  "repository": "https://github.com/frankbria/codeframe",
+  "license": "Apache-2.0"
+}
