@@ -302,3 +302,28 @@ describe('status line', () => {
     expect(w.statuses.at(-1)).toBe('nothing checked yet')
   })
 })
+
+describe('a requirement that was never proven is not called a regression (#1473 walk)', () => {
+  const NEVER_PROVEN = {
+    ...FAILING_RUN,
+    requirements: [{ ...FAILING_RUN.requirements[0], status_before: 'open', status_after: 'open' }],
+  }
+
+  test('the person is told it is not proven yet, not that it broke', async ($, on) => {
+    const w = world(on, json(NEVER_PROVEN, 1))
+    await bash($, 'git commit -m x')
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).toMatch(/not proven yet/)
+    expect(toast).not.toMatch(/proven to work|breaks/)
+  })
+
+  test('Claude is told the same, and what to do for each kind', async ($, on) => {
+    const w = world(on, json(NEVER_PROVEN, 1))
+    const out = await bash($, 'git commit -m x')
+    const said = (out.context ?? []).join('\n')
+    expect(said).toMatch(/not proven yet/)
+    expect(said).not.toMatch(/proven to hold/)
+    expect(said).toMatch(/fill in its draft test/i)
+    expect(w.commands).toEqual(['git commit -m x'])
+  })
+})

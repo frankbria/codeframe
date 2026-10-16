@@ -422,7 +422,12 @@ type ProofRun = {
   vacuous: boolean
   empty_reason: string | null
   description: string | null
-  requirements: { id: string; title: string; gates: { gate: string; outcome: string; tests: string[] }[] }[]
+  requirements: {
+    id: string
+    title: string
+    status_before: string | null
+    gates: { gate: string; outcome: string; tests: string[] }[]
+  }[]
 }
 
 /** What a pre-commit proof run found, in the words each audience needs. */
@@ -452,20 +457,37 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     const broken = doc.requirements
       .map(r => ({ ...r, tests: r.gates.filter(g => g.outcome === 'failed').flatMap(g => g.tests.length ? g.tests : [`${g.gate} gate`]) }))
       .filter(r => r.tests.length)
-    const list = broken.map(r => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`)
+    // Only a requirement that was satisfied before this run is a regression. One
+    // captured and never proven is failing as expected until its draft test is
+    // filled in and the bug fixed; calling it "proven" was false (#1473 walk).
+    const regressed = broken.filter(r => r.status_before === 'satisfied')
+    const unproven = broken.filter(r => r.status_before !== 'satisfied')
+    const line = (r: (typeof broken)[number]) => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`
+    const list = broken.map(line)
     if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
+    const names = (rs: typeof broken) => rs.map(r => (rs.length === 1 ? `${r.id} "${r.title}"` : r.id)).join(', ')
+    const told = (n: number) => `Claude has been told which test${n === 1 ? '' : 's'} fail${n === 1 ? 's' : ''}`
+    const parts = [
+      regressed.length
+        ? `this breaks ${names(regressed)}, which ${regressed.length === 1 ? 'was' : 'were'} proven to work`
+        : '',
+      unproven.length
+        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its test fails' : 'their tests fail'}, as expected until the bug is fixed`
+        : '',
+    ].filter(Boolean)
     return {
       kind: 'failing',
-      person: !broken.length
-        ? 'proof9: the proof run reported a failure'
-        : broken.length === 1
-          ? `proof9: this breaks ${broken[0]?.id} "${broken[0]?.title}", which was proven to work. Claude has been told which test fails; the commit went ahead.`
-          : `proof9: this breaks ${broken.length} requirements that were proven to work (${broken.map(r => r.id).join(', ')}). Claude has been told which tests fail; the commit went ahead.`,
+      person: broken.length
+        ? `proof9: ${parts.join('; ')}. ${told(broken.length)}; the commit went ahead.`
+        : 'proof9: the proof run reported a failure',
       // The run checks the working tree, which can hold more than the commit.
       claude: [
-        'proof9: your working tree breaks requirements that were proven to hold:',
-        ...list.map(l => `- ${l}`),
-        'Fix the code so these tests pass again; do not weaken or delete the tests. `cf proof run` re-checks them.',
+        'proof9: requirements in your working tree fail their tests:',
+        ...regressed.map(r => `- ${line(r)} (was proven to work: a regression)`),
+        ...unproven.map(r => `- ${line(r)} (captured, not proven yet)`),
+        ...(regressed.length ? ['For a regression, fix the code so the test passes again.'] : []),
+        ...(unproven.length ? ['For one not proven yet, fill in its draft test so it fails on the bug, then fix the bug.'] : []),
+        'Do not weaken or delete these tests. `cf proof run` re-checks them.',
       ].join('\n'),
       deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
     }
