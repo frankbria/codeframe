@@ -10,7 +10,7 @@ cf --help                        # smoke test — should print the command tree
 ```
 
 No `uv`? `pipx install codeframe-ai` works too, or run without installing via
-`uvx codeframe-ai --help`. The PyPI package is `codeframe-ai`; it installs two
+`uvx --from codeframe-ai cf --help`. The PyPI package is `codeframe-ai`; it installs two
 equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
 `cf` is the short form used in the README and is interchangeable everywhere.
 
