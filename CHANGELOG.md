@@ -42,6 +42,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the time limit (`timeoutSeconds`, default 120) lets the commit through in
   warn mode and denies it in block mode. The status line shows the ledger's
   obligations and failures.
+- **proof9's band above the prompt** (#1489). A failing requirement in the
+  ledger gets a band naming it and its test, with Ask Claude to fix, Show
+  evidence, Waive… and Dismiss; it clears when a later run passes. An empty
+  ledger gets Lock in passing tests and Capture a bug, once per repository.
 
 ### Documentation
 
