@@ -7,13 +7,26 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-10-15
+
 ### Added
 
 - **`cf proof capture` no longer needs `cf init`** (#1464). In a git repository
   with no workspace it creates `.codeframe/` at the repository's top level and
   says so once. Run from a subdirectory, it uses the enclosing workspace rather
-  than creating a nested one. Outside a git repository it refuses. Every other
-  `cf proof` command still requires an existing workspace.
+  than creating a nested one. Outside a git repository it refuses. Apart from
+  `cf proof ratchet` (below), every other `cf proof` command still requires an
+  existing workspace.
+- **`cf proof ratchet` locks the tests that pass today in as obligations**
+  (#1467), so a new ledger has something to enforce from the start. It runs
+  the project's pytest suite once and turns each passing test into an OPEN
+  requirement (`source=ratchet`) with one `UNIT` obligation naming the test,
+  scoped to the files its per-test coverage touched (`["."]` plus a warning
+  when pytest-cov gives no per-test data). `--dry-run` writes nothing,
+  `--path GLOB` filters which tests are locked, and a rerun creates no
+  duplicates. It exits 2 when there is nothing to lock and 1 when the suite
+  cannot run. Like capture, it creates the workspace on first use. A satisfied
+  locked test is re-checked by `cf proof run --full`.
 
 ### Changed
 
@@ -31,6 +44,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   full command reference moved to the new [CLI guide](docs/CLI_GUIDE.md), and
   the new [Web UI guide](docs/WEB_UI_GUIDE.md) covers each page with a
   screenshot.
+- **A one-page site for codeframe.sh** (#1465) lives in `site/`: static HTML
+  with no scripts or third-party requests, the demo GIF, and a social card.
+- **`docs/VISION.md` states the differentiation precisely** (#1466). The
+  unqualified "nobody else does this" claims are gone; PROVE now names the
+  audit properties that set it apart and the code that checks each one.
 
 ## [0.9.5] - 2026-10-12
 
@@ -1280,7 +1298,8 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/frankbria/codeframe/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/frankbria/codeframe/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/frankbria/codeframe/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/frankbria/codeframe/compare/v0.9.2...v0.9.3
