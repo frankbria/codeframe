@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- **`--json` on `cf proof run`, `list`, `status`, `show`, `capture` and
+  `ratchet`** (#1488), for the proof9 plugin. stdout holds one JSON document;
+  progress, warnings, errors and prompts go to stderr; exit codes are
+  unchanged. A run reports `passed`, `failed`, `vacuous` and, when nothing
+  ran, `empty_reason`; `status` counts `failing` and `locked` requirements.
+
 ### Documentation
 
 - **The run-without-installing command is `uvx --from codeframe-ai cf`.** The
