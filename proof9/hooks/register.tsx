@@ -262,7 +262,7 @@ async function emptyHiddenKey($: EngineInterface): Promise<string> {
 
 /**
  * Reads the ledger and refreshes everything drawn from it: the status line
- * (`proof9 · N obligations · M failing`) and the band. The ledger, not the last
+ * (`N requirements · M failing`; the engine prefixes `proof9:`) and the band. The ledger, not the last
  * run, is the source: a scoped run that does not touch a still-failing
  * requirement must not clear its band.
  */

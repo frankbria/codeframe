@@ -486,7 +486,7 @@ def run(
             # check". CI treats any non-zero as a stop, which is the point.
             console.print("[yellow]Nothing was verified.[/yellow]")
             console.print(
-                "There are no proof obligations in this workspace, so this run "
+                "There are no requirements in this workspace yet, so this run "
                 "checked nothing — it is not a pass."
             )
             console.print(
