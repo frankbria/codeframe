@@ -88,22 +88,25 @@ type Captured = {
   warnings: string[]
 }
 
-async function capture($: EngineInterface, text: string): Promise<string> {
-  const first = (text.split('\n').find(line => line.trim()) ?? text).trim()
-  const title = Array.from(first).slice(0, TITLE_MAX).join('').trim()
+const SEVERITIES = ['critical', 'high', 'medium', 'low']
+
+type CaptureFields = { title: string; description: string; where?: string; severity?: string }
+
+/** `cf proof capture --json`; the summary on success, or what went wrong. */
+async function captureWith($: EngineInterface, f: CaptureFields): Promise<{ ok: boolean; text: string }> {
   // The repo root scopes the requirement to the whole repository (fail closed).
-  const where = (await attempt(() => $.session.repo()))?.root ?? '.'
+  const where = f.where?.trim() || (await attempt(() => $.session.repo()))?.root || '.'
   const ran = await cf($, [
     'proof', 'capture', '--json',
-    '--title', title,
-    '--description', text,
+    '--title', f.title,
+    '--description', f.description,
     '--where', where,
-    '--severity', 'medium',
+    '--severity', f.severity ?? 'medium',
     '--source', 'qa',
   ])
-  if ('failed' in ran) return cannotRun(ran.failed)
+  if ('failed' in ran) return { ok: false, text: cannotRun(ran.failed) }
   const doc = ran.exitCode === 0 ? parse<Captured>(ran) : null
-  if (!doc) return `cf proof capture failed:\n${errorText(ran)}`
+  if (!doc) return { ok: false, text: `cf proof capture failed:\n${errorText(ran)}` }
 
   const req = doc.requirement
   const lines = [
@@ -115,7 +118,48 @@ async function capture($: EngineInterface, text: string): Promise<string> {
   for (const warning of doc.warnings) lines.push(`  ⚠ ${warning}`)
   if (doc.workspace_created) lines.push('Created .codeframe/ in this repository.')
   lines.push('Implement the stub tests, then run `cf proof run` to enforce it.')
-  return lines.join('\n')
+  return { ok: true, text: lines.join('\n') }
+}
+
+async function capture($: EngineInterface, text: string): Promise<string> {
+  const first = (text.split('\n').find(line => line.trim()) ?? text).trim()
+  const title = Array.from(first).slice(0, TITLE_MAX).join('').trim()
+  return (await captureWith($, { title, description: text })).text
+}
+
+const CAPTURE_TOOL = {
+  name: 'capture',
+  description:
+    'Capture a bug as a permanent proof requirement in this repository\'s ledger (cf proof capture): ' +
+    'it creates the requirement and test stubs that keep the bug fixed. Use it after fixing a regression ' +
+    'or a reported bug, with the person\'s agreement.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Short statement of what went wrong' },
+      description: { type: 'string', description: 'What happened: expected versus actual' },
+      where: { type: 'string', description: 'File, directory, route or API it happened in (default: the whole repository)' },
+      severity: { type: 'string', enum: SEVERITIES, description: 'Default: medium' },
+    },
+    required: ['title', 'description'],
+  },
+  isDeferred: false,
+}
+
+// Told to Claude in a repository with a proof ledger: a few lines, no requirement list.
+const LEDGER_SECTION = {
+  id: 'proof9:ledger',
+  scope: 'session' as const,
+  text: [
+    'This repository keeps a PROOF9 ledger: requirements proven to hold, each enforced by named tests (cf proof).',
+    'After you fix a regression or a reported bug, offer to capture it with the mcp__proof9__capture tool so it stays fixed.',
+    'When a commit or `cf proof run` reports a failing requirement, fix the code, not the test: never weaken, skip or delete a proof test.',
+  ].join('\n'),
+}
+
+async function hasLedger($: EngineInterface): Promise<boolean> {
+  const root = (await attempt(() => $.session.repo()))?.root
+  return Boolean(root && (await attempt(() => $.fs.stat(`${root}/.codeframe`)))?.kind === 'dir')
 }
 
 type Ratcheted = {
@@ -352,8 +396,29 @@ export const register: Register = (on, options) => {
       description: 'Capture a bug as a permanent proof obligation (or: /proof ratchet)',
       argumentHint: '<what went wrong> | ratchet [--dry-run]',
     })
+    // A tool that cannot be registered must not cost the rest of session start.
+    await attempt(() => $.tool.register(CAPTURE_TOOL))
     if (await checkVersion($)) await refreshLedger($)
     return next(e)
+  })
+
+  on('tool.call', { tool: 'mcp__proof9__capture' }, async ($, e) => {
+    const input = e as unknown as Partial<Record<'title' | 'description' | 'where' | 'severity', unknown>>
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+    const fields = { title: str(input.title), description: str(input.description), where: str(input.where), severity: str(input.severity) || undefined }
+    if (!fields.title || !fields.description) return { deny: 'proof9 capture needs a title and a description.' }
+    if (fields.severity && !SEVERITIES.includes(fields.severity)) {
+      return { deny: `proof9 capture: severity must be one of ${SEVERITIES.join(', ')}.` }
+    }
+    const captured = await captureWith($, fields)
+    if (!captured.ok) return { deny: captured.text }
+    await attempt(() => refreshLedger($))
+    return { result: captured.text }
+  }).catch(() => ({ deny: 'proof9 capture failed unexpectedly; run `cf proof capture` to see why.' }))
+
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    return (await hasLedger($)) ? { ...composed, sections: [...composed.sections, LEDGER_SECTION] } : composed
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

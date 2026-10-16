@@ -19,6 +19,13 @@ uv tool install codeframe-ai
 
 Captures work in any git repository; the first one creates `.codeframe/`.
 
+Claude can capture too: the plugin registers a `capture` tool
+(`mcp__proof9__capture`, title and description required; where and severity
+optional), which goes through the normal permission prompt. In a repository
+with a ledger, Claude is told in a few lines that the ledger exists, to offer a
+capture after fixing a regression, and to fix the code rather than the test
+when a requirement fails.
+
 ## Before every commit
 
 When Claude runs `git commit`, proof9 runs `cf proof run` first.
