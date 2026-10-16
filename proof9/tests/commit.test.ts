@@ -38,6 +38,10 @@ describe('a commit is detected wherever git runs it', () => {
     'OUTPUT="$(git commit -am \\"fix\\" 2>&1)"',
     'echo "`git commit -m x`"',
     'echo "$(cd sub && $(echo x) git commit -m y)"',
+    'OUTPUT="$(git -C "sub dir" commit -m x)"',
+    'echo "a $(echo "b $(git commit -m x)")"',
+    'echo "$(echo \')\' && git commit -m x)"',
+    'X="$(git -c user.name="A B" commit -m "msg with ) paren")"',
   ]) {
     test(JSON.stringify(command), () => {
       expect(isGitCommit(command)).toBe(true)
@@ -61,6 +65,7 @@ describe('text that merely mentions a commit is not one', () => {
     'git status > commit',
     "echo '$(git commit -m x)'",
     'echo "price: $5 (git commit not run)"',
+    'echo "$(echo "git commit")"',
     'git log 2>&1 | grep commit',
     'ls',
     '',

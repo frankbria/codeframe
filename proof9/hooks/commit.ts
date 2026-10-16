@@ -24,25 +24,32 @@ const REDIRECT = /^(?:\d*|&)(?:>>?|<|>&|<&|>\|)(.*)$/
 // git's global options that take the next word as their value.
 const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'])
 
-/** The `$(…)` and backtick spans in double-quoted text, which the shell runs. */
-function substitutions(text: string): string[] {
-  const spans: string[] = []
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\\') {
-      i++
-    } else if (text[i] === '`') {
-      const end = text.indexOf('`', i + 1)
-      spans.push(text.slice(i + 1, end < 0 ? undefined : end))
-      i = end < 0 ? text.length : end
-    } else if (text[i] === '$' && text[i + 1] === '(') {
-      let depth = 1
-      let j = i + 2
-      for (; j < text.length && depth; j++) depth += text[j] === '(' ? 1 : text[j] === ')' ? -1 : 0
-      spans.push(text.slice(i + 2, depth ? j : j - 1))
-      i = j - 1
-    }
+/** Index of the `)` closing a `$(` whose body starts at ``start`` (quotes,
+ *  escapes and nested parentheses understood), or ``line.length``. */
+function closingParen(line: string, start: number): number {
+  let depth = 1
+  for (let k = start; k < line.length; k++) {
+    const ch = line[k]
+    if (ch === '\\') k++
+    else if (ch === "'") k = (line.indexOf("'", k + 1) + 1 || line.length + 1) - 1
+    else if (ch === '"') k = closingQuote(line, k + 1)
+    else if (ch === '(') depth++
+    else if (ch === ')' && --depth === 0) return k
   }
-  return spans
+  return line.length
+}
+
+/** Index of the `"` closing a double-quoted span that starts at ``start``:
+ *  a `$(…)` inside it may hold quotes of its own. */
+function closingQuote(line: string, start: number): number {
+  for (let k = start; k < line.length; k++) {
+    const ch = line[k]
+    if (ch === '\\') k++
+    else if (ch === '$' && line[k + 1] === '(') k = closingParen(line, k + 2)
+    else if (ch === '`') k = (line.indexOf('`', k + 1) + 1 || line.length + 1) - 1
+    else if (ch === '"') return k
+  }
+  return line.length
 }
 
 /** The simple commands of a command line, each as its list of words. */
@@ -79,14 +86,25 @@ export function simpleCommands(line: string): string[][] {
       inWord = true
       i = end < 0 ? line.length : end + 1
     } else if (c === '"') {
-      let j = i + 1
-      while (j < line.length && line[j] !== '"') j += line[j] === '\\' ? 2 : 1
-      const quoted = line.slice(i + 1, j)
-      // Double quotes keep `$(…)` and backticks live: `OUT="$(git commit)"` commits.
-      for (const span of substitutions(quoted)) nested.push(...simpleCommands(span))
-      word += quoted.replace(/\\(.)/g, '$1')
+      // Double quotes keep `$(…)` and backticks live, at any depth:
+      // `OUT="$(git -C "a b" commit)"` commits.
+      const end = closingQuote(line, i + 1)
+      for (let k = i + 1; k < end; k++) {
+        if (line[k] === '\\') {
+          k++
+        } else if (line[k] === '$' && line[k + 1] === '(') {
+          const close = closingParen(line, k + 2)
+          nested.push(...simpleCommands(line.slice(k + 2, close)))
+          k = close
+        } else if (line[k] === '`') {
+          const close = line.indexOf('`', k + 1)
+          nested.push(...simpleCommands(line.slice(k + 1, close < 0 ? end : close)))
+          k = close < 0 ? end : close
+        }
+      }
+      word += line.slice(i + 1, end).replace(/\\(.)/g, '$1')
       inWord = true
-      i = j + 1
+      i = end + 1
     } else if (line.startsWith('<<<', i)) {
       endWord()
       i += 3
