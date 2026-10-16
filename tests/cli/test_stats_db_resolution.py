@@ -103,3 +103,17 @@ def test_stats_tokens_errors_when_database_path_invalid(
     result = CliRunner().invoke(stats_app, ["tokens"])
     assert result.exit_code == 1
     assert "DATABASE_PATH does not point to a database file" in result.output
+
+
+def test_stats_opens_the_workspace_db_read_only(tmp_path, monkeypatch):
+    """#943: `cf stats` only reads; its connection must refuse writes (#1477 review)."""
+    from codeframe.cli.stats_commands import _get_db
+
+    db_path = _make_workspace_with_row(tmp_path)
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+    repo = _get_db()
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            repo.conn.execute("CREATE TABLE users (id INTEGER)")
+    finally:
+        repo.conn.close()

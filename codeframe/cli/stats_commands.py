@@ -73,7 +73,7 @@ def _get_db():
             raise typer.Exit(1)
     # Reads only: the workspace's own schema is created by
     # create_or_load_workspace, and stats only reads token_usage (#943).
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, check_same_thread=False)
     conn.execute("PRAGMA busy_timeout = 5000")
     return TokenRepository(sync_conn=conn)
 
