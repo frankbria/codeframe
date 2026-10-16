@@ -311,7 +311,6 @@ class TestEnforcement:
         assert reqs["test_add"].obligations[0].status == "failed"
         assert reqs["test_sub"].status == ReqStatus.SATISFIED
 
-
     def test_a_regression_after_the_first_proof_run_fails_a_full_run(self, repo):
         """Once satisfied, a locked test is re-verified by --full (#923), so
         that is the command the ratchet points at."""
