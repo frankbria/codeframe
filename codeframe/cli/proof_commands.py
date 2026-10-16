@@ -274,7 +274,7 @@ def ratchet(
 
     n = len(result.locked)
     tests = "test" if n == 1 else "tests"
-    if dry_run:
+    if dry_run and n:
         console.print(f"Would lock in {n} passing {tests} as obligations (dry run — ledger not written):")
         for name, files in result.locked.items():
             console.print(f"  {escape(name)}  [dim]({len(files)} file(s) in scope)[/dim]")

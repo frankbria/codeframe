@@ -243,6 +243,15 @@ class TestRerun:
         assert len(ledger.list_requirements(get_workspace(repo))) == len(before) == 2
         assert "already locked" in second.output
 
+    def test_a_dry_run_after_everything_is_locked_never_says_zero(self, repo):
+        assert _ratchet(repo).exit_code == 0
+
+        dry = _ratchet(repo, "--dry-run")
+
+        assert dry.exit_code == 0, dry.output
+        assert "Would lock in" not in dry.text
+        assert "2 passing test(s) already locked in." in dry.text
+
     def test_a_newly_passing_test_is_added_on_rerun(self, repo):
         assert _ratchet(repo).exit_code == 0
         tests = repo / "tests" / "test_calc.py"
