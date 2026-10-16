@@ -113,16 +113,16 @@ async function captureWith($: EngineInterface, f: CaptureFields): Promise<{ ok: 
   const doc = ran.exitCode === 0 ? parse<Captured>(ran) : null
   if (!doc) return { ok: false, text: `cf proof capture failed:\n${errorText(ran)}` }
 
+  // Words for someone who has read nothing (#1473): no "obligations" or "stubs".
   const req = doc.requirement
-  const lines = [
-    `✓ ${req.id} captured: ${req.title}`,
-    `  Obligations: ${req.obligations.map(o => o.gate).join(', ')}`,
-  ]
+  const gates = req.obligations.map(o => o.gate)
+  const kinds = gates.length > 1 ? `${gates.slice(0, -1).join(', ')} and ${gates.at(-1)}` : gates[0] ?? 'its'
+  const lines = [`✓ ${req.id} captured: ${req.title}`, `It will be checked by ${kinds} tests.`]
   const stubs = Object.values(doc.stubs)
-  if (stubs.length) lines.push(`  Test stubs: ${stubs.join(', ')}`)
-  for (const warning of doc.warnings) lines.push(`  ⚠ ${warning}`)
-  if (doc.workspace_created) lines.push('Created .codeframe/ in this repository.')
-  lines.push('Implement the stub tests, then run `cf proof run` to enforce it.')
+  if (stubs.length) lines.push('Draft tests were written for you; fill them in so they fail on the bug and pass on the fix:', ...stubs.map(s => `  ${s}`))
+  for (const warning of doc.warnings) lines.push(`⚠ ${warning}`)
+  lines.push('Then run `cf proof run` to record the proof. From then on, proof9 checks it before every commit.')
+  if (doc.workspace_created) lines.push('(Created .codeframe/ in this repository: that is where proof9 keeps its ledger.)')
   return { ok: true, text: lines.join('\n') }
 }
 
@@ -444,9 +444,11 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
     return {
       kind: 'failing',
-      person: broken.length
-        ? `proof9: ${broken.length} proven requirement(s) fail: ${broken.map(r => r.id).join(', ')}`
-        : 'proof9: the proof run reported a failure',
+      person: !broken.length
+        ? 'proof9: the proof run reported a failure'
+        : broken.length === 1
+          ? `proof9: this breaks ${broken[0]?.id} "${broken[0]?.title}", which was proven to work. Claude has been told which test fails; the commit went ahead.`
+          : `proof9: this breaks ${broken.length} requirements that were proven to work (${broken.map(r => r.id).join(', ')}). Claude has been told which tests fail; the commit went ahead.`,
       // The run checks the working tree, which can hold more than the commit.
       claude: [
         'proof9: your working tree breaks requirements that were proven to hold:',
@@ -457,7 +459,7 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     }
   }
   if (doc.empty_reason === 'no_requirements') {
-    return { kind: 'note', person: 'proof9: no proof obligations yet. Capture a bug with /proof, or lock in passing tests with /proof ratchet.' }
+    return { kind: 'note', person: 'proof9 has nothing to check yet. Capture a bug with /proof, or lock in the tests that pass today with /proof ratchet.' }
   }
   if (doc.vacuous || ran.exitCode === 2) {
     return { kind: 'note', person: `proof9: nothing was verified${doc.description ? ` (${doc.description})` : ''}; this is not a pass.` }
@@ -514,7 +516,7 @@ export const register: Register = (on, options) => {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
     }
     if (verdict.kind === 'failing' && block) {
-      $.ui.toast(verdict.person)
+      $.ui.toast(verdict.deny)
       await attempt(() => refreshLedger($))
       return { deny: verdict.deny }
     }

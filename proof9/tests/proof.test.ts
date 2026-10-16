@@ -92,9 +92,13 @@ describe('/proof <text>', () => {
     expect(call?.env).toEqual({ CODEFRAME_CLIENT: 'proof9' })
     expect(out.text).toContain('REQ-0003')
     expect(out.text).toContain('Login 500s on empty password')
-    expect(out.text).toContain('unit, sec')
+    expect(out.text).toContain('unit and sec')
     expect(out.text).toContain('tests/proof/REQ-0003/draft_test_unit.py')
     expect(out.text).toContain('Created .codeframe/')
+    // #1473: no internal terms a first-time user has not met, and what to do next.
+    expect(out.text).not.toMatch(/obligation|stub/i)
+    expect(out.text).toMatch(/fill (them|it) in/i)
+    expect(out.text).toMatch(/before every commit/i)
   })
 
   test('a long first line is cut for the title, never for the description', async ($, on) => {

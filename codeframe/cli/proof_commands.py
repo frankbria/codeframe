@@ -490,8 +490,9 @@ def run(
                 "checked nothing — it is not a pass."
             )
             console.print(
-                "\nCapture your first requirement with:\n"
-                "  [bold]cf proof capture[/bold]"
+                "\nStart with either:\n"
+                "  [bold]cf proof capture[/bold]   record a bug you fixed, so it stays fixed\n"
+                "  [bold]cf proof ratchet[/bold]   lock in the tests that pass today"
             )
             _stop_nothing_verified()
 
@@ -894,7 +895,11 @@ def status_cmd(
             "[yellow]No proof requirements — nothing in this workspace is "
             "being verified.[/yellow]"
         )
-        console.print("Capture your first one with: [bold]cf proof capture[/bold]")
+        console.print(
+            "Start with either:\n"
+            "  [bold]cf proof capture[/bold]   record a bug you fixed, so it stays fixed\n"
+            "  [bold]cf proof ratchet[/bold]   lock in the tests that pass today"
+        )
         return
 
     counts = {"open": 0, "satisfied": 0, "waived": 0}

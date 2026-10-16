@@ -112,6 +112,11 @@ describe('warn mode (default)', () => {
     expect(w.commands).toEqual(['git commit -m x'])
     expect(out.deny).toBeUndefined()
     expect(w.toasts.some(t => t.includes('REQ-0003'))).toBe(true)
+    // #1473: the person learns what broke, that Claude knows, and that the commit went ahead.
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).toContain('Login 500s on an empty form')
+    expect(toast).toMatch(/Claude/)
+    expect(toast).toMatch(/went ahead/)
     const said = (out.context ?? []).join('\n')
     expect(said).toContain('REQ-0003')
     expect(said).toContain('Login 500s on an empty form')
@@ -141,6 +146,7 @@ describe('warn mode (default)', () => {
     expect(w.commands).toEqual(['git commit -m x'])
     expect(out.deny).toBeUndefined()
     expect(w.toasts.some(t => t.includes('/proof') && t.includes('/proof ratchet'))).toBe(true)
+    expect(w.toasts.some(t => /obligation/i.test(t))).toBe(false)
   })
 
   test('a vacuous run is reported as vacuous, never as a pass', async ($, on) => {
@@ -180,6 +186,9 @@ describe('block mode (opt-in)', () => {
     expect(w.commands).toEqual([])
     expect(out.deny).toContain('REQ-0003')
     expect(out.deny).toContain('test_unit_empty_form')
+    // The person must not be told the commit went ahead when it was refused.
+    expect(w.toasts.some(t => /went ahead/.test(t))).toBe(false)
+    expect(w.toasts.some(t => /blocked/.test(t))).toBe(true)
   })
 
   test('a pass lets the commit run', { options: { mode: 'block' } }, async ($, on) => {
