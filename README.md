@@ -90,6 +90,14 @@ Claude makes is checked against the ledger first, and a failing requirement
 shows above the prompt. A ledger pane beside the transcript lists every
 requirement with its evidence and run history.
 
+<p align="center">
+  <img src="docs/images/proof9-loop.gif" alt="Claude Code session with the proof9 plugin: asked to make shipping a flat $5 per order, Claude reads the ledger, keeps free shipping over $50 because two locked requirements depend on it, commits with all 4 requirements passing, and the /proof pane shows every requirement satisfied" width="820">
+</p>
+
+A real session on codeframe 0.9.7 (cast: [`docs/images/proof9-loop.cast`](docs/images/proof9-loop.cast)).
+Asked for a change that would undo a past decision, Claude finds the locked
+requirement, keeps it, and says what it would take to change it on purpose.
+
 ---
 
 ## Quick Start
