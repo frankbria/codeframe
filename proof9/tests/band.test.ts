@@ -250,3 +250,10 @@ describe('review fixes', () => {
     expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeDefined()
   })
 })
+
+test('a waived requirement is an accepted risk: no band even with a failed obligation', async ($, on) => {
+  world(on, [ledger(req('REQ-0003', 'Login 500s on an empty form', true, 'waived'))])
+  await start($)
+  const ui = await band($)
+  expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeUndefined()
+})
