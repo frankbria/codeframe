@@ -423,7 +423,6 @@ def run(
     gates: Optional[list[str]] = None,
     verbose: bool = False,
     auto_install_deps: bool = True,
-    test_selector: Optional[str] = None,
 ) -> GateResult:
     """Run verification gates.
 
@@ -432,8 +431,6 @@ def run(
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
         auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
-        test_selector: Optional exact test function name; only applies to the
-            pytest gate. With a selector, "no test of that name" is a failure.
 
     Returns:
         GateResult with all check results
@@ -483,7 +480,7 @@ def run(
     # Run each gate
     for gate_name in gates:
         if gate_name == "pytest":
-            check = _run_pytest(repo_path, verbose, test_selector=test_selector)
+            check = _run_pytest(repo_path, verbose)
         elif gate_name == "ruff":
             check = _run_ruff(repo_path, verbose)
         elif gate_name == "bandit":
@@ -727,26 +724,13 @@ def _run_tool(
 SKIPPED_NOT_EVIDENCE = "skipped, not run: a skip is not evidence"
 
 
-def _exact_cases_verdict(report: Path, name: str) -> Optional[str]:
-    """From a pytest JUnit report, for the cases named exactly ``name``
-    (parameters ignored): None when there are none, else ``"failed"`` if any
-    failed or errored, ``"skipped"`` if none actually ran (a skip, or an xfail,
-    which JUnit reports as skipped, executed nothing and is not evidence,
-    #1430), else ``"passed"``."""
-    try:
-        cases = [
-            c for c in ET.parse(report).getroot().iter("testcase")
-            if c.get("name", "").split("[", 1)[0] == name
-        ]
-    except (OSError, ET.ParseError):
-        return None
-    return cases_verdict(cases)
-
-
 def cases_verdict(cases: list[ET.Element]) -> Optional[str]:
-    """The verdict ``_exact_cases_verdict`` gives a set of JUnit cases sharing
-    one name. Shared with ``cf proof ratchet`` (#1467), which must lock in only
-    what the runner will later judge a pass."""
+    """The verdict for a set of JUnit cases sharing one name: ``"failed"`` if
+    any failed or errored, ``"skipped"`` if none actually ran (a skip, or an
+    xfail, which JUnit reports as skipped, executed nothing and is not
+    evidence, #1430), else ``"passed"``. Shared by the runner's
+    ``pytest_verdicts`` and ``cf proof ratchet`` (#1467), which must lock in
+    only what the runner will later judge a pass."""
     if not cases:
         return None
     if any(c.find("failure") is not None or c.find("error") is not None for c in cases):
@@ -756,10 +740,68 @@ def cases_verdict(cases: list[ET.Element]) -> Optional[str]:
     return "passed"
 
 
-def _run_pytest(
-    repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
-) -> GateCheck:
-    """Run pytest, optionally scoped to the tests named exactly ``test_selector``."""
+@dataclass
+class PytestVerdicts:
+    """Per-name verdicts from one pytest run (#1485).
+
+    ``verdicts`` maps each requested name to ``cases_verdict`` of the cases
+    named exactly that (``None``: not collected). ``problem`` is set when no
+    verdict can be trusted, as the ``GateStatus`` value the per-rule run used
+    to report: SKIPPED (pytest unavailable), ERROR (timeout) or FAILED
+    (collection, internal or usage error).
+    """
+
+    verdicts: dict[str, Optional[str]]
+    problem: Optional[str] = None
+    detail: str = ""
+
+
+def pytest_verdicts(repo_path: Path, names: list[str]) -> PytestVerdicts:
+    """Run the tests named ``names`` in ONE pytest process and judge each name.
+
+    `-k "a or b"` is substring matching, so it also runs longer names; they
+    cannot decide a verdict, which is taken per exact name from the JUnit
+    report (#1401). --maxfail=0 overrides a project's -x, which would leave
+    exact cases unrun. A ratchet of N tests used to cost N pytest processes,
+    each collecting the whole suite; this is the one (#1485).
+    """
+    if not shutil.which("pytest") and not shutil.which("uv"):
+        return PytestVerdicts({}, GateStatus.SKIPPED.value, "pytest not found")
+    base = ["uv", "run", "pytest"] if shutil.which("uv") else ["pytest"]
+    with tempfile.TemporaryDirectory() as tmp:
+        report = Path(tmp) / "report.xml"
+        cmd = base + [
+            "-q", "--tb=short", "-k", " or ".join(names), "--maxfail=0", f"--junitxml={report}",
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=repo_path,
+                env=build_agent_env(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            return PytestVerdicts({}, GateStatus.ERROR.value, "Timeout after 5 minutes")
+        output = _summarize_pytest_output((result.stdout or "") + "\n" + (result.stderr or ""))
+        if _tool_is_missing(result.returncode, result.stderr, {"pytest"}):
+            return PytestVerdicts({}, GateStatus.SKIPPED.value, "pytest not found in project dependencies")
+        if result.returncode not in (0, 1, 5):
+            return PytestVerdicts({}, GateStatus.FAILED.value, output)
+        by_name: dict[str, list[ET.Element]] = {}
+        try:
+            for case in ET.parse(report).getroot().iter("testcase"):
+                by_name.setdefault(case.get("name", "").split("[", 1)[0], []).append(case)
+        except (OSError, ET.ParseError):
+            pass  # no report: every name reads as not collected, which fails it
+    return PytestVerdicts({n: cases_verdict(by_name.get(n, [])) for n in names}, detail=output)
+
+
+def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run the whole pytest suite. Named evidence tests: ``pytest_verdicts``."""
     import time
 
     start = time.time()
@@ -789,27 +831,7 @@ def _run_pytest(
                 timeout=300,  # 5 minute timeout
             )
 
-        # `-k` is substring matching: `test_unit_total` also ran
-        # `test_unit_total_wrong`, and a missing test passed through any
-        # longer-named one (#1401). The verdict is taken from a JUnit report,
-        # counting only the cases named exactly `test_selector`; the others the
-        # `-k` drags in still run but cannot decide it. A report, not console
-        # output or --deselect: a project's verbosity settings reshaped the
-        # output and --deselect matches node-id prefixes (codex review).
-        exact: Optional[str] = None
-        if test_selector:
-            with tempfile.TemporaryDirectory() as tmp:
-                report = Path(tmp) / "report.xml"
-                # --maxfail=0 (no limit) overrides a project's -x/--maxfail:
-                # stopping on an unrelated match left exact cases unrun, and
-                # the report then held only the ones that passed (codex review).
-                result = _pytest(
-                    cmd + ["-k", test_selector, "--maxfail=0", f"--junitxml={report}"]
-                )
-                if result.returncode in (0, 1, 5):
-                    exact = _exact_cases_verdict(report, test_selector)
-        else:
-            result = _pytest(cmd)
+        result = _pytest(cmd)
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -853,12 +875,8 @@ def _run_pytest(
             status = GateStatus.FAILED
         elif result.returncode == 5:
             # Exit code 5: no tests collected
-            # With an explicit selector, "nothing matched" means the named
-            # test doesn't exist — that is a failure, not an empty suite.
             output_lower = output.lower()
-            if test_selector:
-                status = GateStatus.FAILED
-            elif "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
+            if "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
                 # Collection error disguised as "no tests collected"
                 status = GateStatus.FAILED
             elif "no tests ran" in output_lower or "collected 0 items" in output_lower:
@@ -872,19 +890,7 @@ def _run_pytest(
             status = GateStatus.FAILED
 
         exit_code = result.returncode
-        if test_selector and result.returncode in (0, 1, 5):
-            if exact is None:
-                status, exit_code = GateStatus.FAILED, 5  # named test missing
-                output = f"no test named {test_selector} was collected\n" + output
-            else:
-                passed = exact == "passed"
-                status = GateStatus.PASSED if passed else GateStatus.FAILED
-                exit_code = 0 if passed else 1
-
         output = output if verbose else _summarize_pytest_output(output)
-        if test_selector and exact == "skipped":
-            # After summarising, which would drop it; the runner keys on it (#1430).
-            output = f"{test_selector}: {SKIPPED_NOT_EVIDENCE}\n{output}"
 
         return GateCheck(
             name="pytest",
