@@ -21,6 +21,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   codeframe 0.9.7 or later; session start says how to install or upgrade the
   CLI when it is missing or older.
 
+### Changed
+
+- **A plain `cf proof run` re-checks satisfied requirements your changes
+  touch** (#1484). It used to load only open requirements, so a satisfied
+  ratchet lock re-failed only under `--full`. Now, whenever there is a diff,
+  satisfied requirements whose scope it intersects are re-verified and
+  reopened on failure. A clean tree re-checks nothing satisfied; waived
+  requirements stay out of every run.
+
 ### Documentation
 
 - **The run-without-installing command is `uvx --from codeframe-ai cf`.** The

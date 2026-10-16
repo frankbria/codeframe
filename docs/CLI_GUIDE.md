@@ -228,7 +228,8 @@ in, and re-running adds only tests not already locked. `--dry-run` shows what it
 would lock; `--path 'tests/unit/*'` narrows it. It exits 2 when there is nothing
 to lock (no tests, or none pass) and 1 when the suite cannot run. Run
 `cf proof run --full` afterwards to record their evidence; until then the merge
-gate treats them as open. Once satisfied, they are re-checked by `--full` runs.
+gate treats them as open. Once satisfied, a plain `cf proof run` re-checks each
+one whenever your changes touch its scope, and `--full` re-checks them all.
 
 **Machine-readable output.** `run`, `list`, `status`, `show`, `capture` and
 `ratchet` take `--json`: stdout then holds one JSON document, and progress,

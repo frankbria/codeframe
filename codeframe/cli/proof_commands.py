@@ -349,8 +349,8 @@ def ratchet(
             "Nothing that passes today can silently stop passing."
         )
         console.print(
-            "Run `cf proof run --full` to record their evidence, and again whenever "
-            "you want them re-checked: a plain `cf proof run` skips satisfied requirements."
+            "Run `cf proof run --full` to record their evidence. After that, "
+            "`cf proof run` re-checks each one whenever your changes touch its scope."
         )
     if result.already_locked:
         console.print(f"{len(result.already_locked)} passing test(s) already locked in.")
@@ -501,8 +501,9 @@ def run(
 
         hints = {
             EmptyReason.EXCLUDED_BY_STATUS: (
-                "A waiver is an accepted risk that no run re-checks; "
-                "[bold]cf proof run --full[/bold] also re-verifies satisfied ones."
+                "A waiver is an accepted risk that no run re-checks. Satisfied ones "
+                "are re-checked when your changes touch them; "
+                "[bold]cf proof run --full[/bold] re-verifies them all."
             ),
             EmptyReason.EXCLUDED_BY_SCOPE: (
                 "[bold]cf proof run --full[/bold] ignores scope entirely."

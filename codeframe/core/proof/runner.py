@@ -22,6 +22,7 @@ from codeframe.core.proof.models import (
     GateOutcome,
     ProofRun,
     ReqStatus,
+    RequirementScope,
 )
 from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
@@ -44,7 +45,7 @@ class EmptyReason(str, Enum):
     #: The ledger holds no requirements at all.
     NO_REQUIREMENTS = "no_requirements"
     #: Requirements exist but none were eligible: WAIVED always, and SATISFIED
-    #: unless the run is --full.
+    #: when a scoped run has no diff to re-check them against (#1484).
     EXCLUDED_BY_STATUS = "excluded_by_status"
     #: Every eligible requirement was out of scope for the current changes.
     EXCLUDED_BY_SCOPE = "excluded_by_scope"
@@ -137,8 +138,9 @@ _REASON_TEXT = {
     EmptyReason.NOT_EMPTY: lambda d: f"{d.evaluated} requirement(s) verified",
     EmptyReason.NO_REQUIREMENTS: lambda d: "the requirement ledger is empty",
     EmptyReason.EXCLUDED_BY_STATUS: lambda d: (
-        f"all {d.total_requirements} requirement(s) are waived, or satisfied on a "
-        "scoped run — re-run with --full to include satisfied ones"
+        f"all {d.total_requirements} requirement(s) are waived, or satisfied with "
+        "no changes to re-check them against — re-run with --full to include "
+        "satisfied ones"
     ),
     EmptyReason.EXCLUDED_BY_SCOPE: lambda d: (
         f"all {len(d.scope_skipped)} open requirement(s) are out of scope for the "
@@ -386,20 +388,37 @@ def _report_scope_skipped(run_id: str, skipped: list[str]) -> None:
         run_id, len(skipped), ", ".join(sorted(skipped)),
     )
 
-def _requirements_for_run(workspace: Workspace, *, full: bool) -> list:
-    """Which requirements a run evaluates (#923).
+def _wants_satisfied(*, full: bool, changed_scope: "RequirementScope | None") -> bool:
+    """Whether a run re-verifies SATISFIED requirements (#923, #1484).
 
-    A scoped run keeps the cheap behaviour — open requirements only. A ``--full``
-    run also re-verifies SATISFIED ones, because otherwise there was no path
-    back: the runner loaded only OPEN, so once satisfied a requirement could
-    never re-fail on a later regression, and the #731 merge gate — which
-    inspects only *open* requirements — then blocked nothing.
+    A ``--full`` run always does, and so does a scoped run with a diff: the
+    caller then filters them through the same ``intersects`` as open ones, so
+    only those the diff touches are re-run. A scoped run used to load OPEN
+    alone, which meant a satisfied ratchet lock (#1467) re-failed only under
+    ``--full`` — and the pre-commit hook (#1470) runs a plain ``cf proof run``.
 
-    WAIVED requirements stay out of both. A waiver is an accepted risk recorded
-    by a human, not something a gate result should quietly overturn.
+    No diff (a clean tree) means nothing is in the diff's scope, so nothing
+    satisfied is re-run; ``intersects`` would otherwise count every requirement
+    in scope ("nothing comparable") and turn a plain run into a full one.
+    ``None`` means scope detection failed, and fails closed like open ones.
+    """
+    return full or changed_scope is None or bool(changed_scope.files)
+
+
+def _requirements_for_run(
+    workspace: Workspace, *, full: bool, changed_scope: "RequirementScope | None" = None
+) -> list:
+    """Which requirements a run evaluates (#923, #1484).
+
+    OPEN always; SATISFIED when :func:`_wants_satisfied` says so — without that
+    there was no path back, and the #731 merge gate, which inspects only *open*
+    requirements, blocked nothing after a regression.
+
+    WAIVED requirements stay out of every run. A waiver is an accepted risk
+    recorded by a human, not something a gate result should quietly overturn.
     """
     reqs = ledger.list_requirements(workspace, status=ReqStatus.OPEN)
-    if full:
+    if _wants_satisfied(full=full, changed_scope=changed_scope):
         reqs = reqs + ledger.list_requirements(workspace, status=ReqStatus.SATISFIED)
     return reqs
 
@@ -454,8 +473,12 @@ def run_proof_with_diagnostics(
     if expired:
         logger.info("Expired %d waivers", len(expired))
 
-    # Get all open requirements
-    reqs = _requirements_for_run(workspace, full=full)
+    # Get changed scope (skip if running full)
+    changed_scope = None
+    if not full:
+        changed_scope = get_changed_scope(workspace)
+
+    reqs = _requirements_for_run(workspace, full=full, changed_scope=changed_scope)
     # The ledger total is what separates "no requirements exist" from "none were
     # eligible" — _requirements_for_run returns [] for both.
     diagnostics = ProofRunDiagnostics(
@@ -490,11 +513,6 @@ def run_proof_with_diagnostics(
             "no obligations will run and the run will pass vacuously",
             run_id,
         )
-
-    # Get changed scope (skip if running full)
-    changed_scope = None
-    if not full:
-        changed_scope = get_changed_scope(workspace)
 
     results: dict[str, list[tuple[Gate, GateOutcome]]] = {}
     artifact_dir = workspace.state_dir / "proof_artifacts"
