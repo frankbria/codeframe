@@ -100,3 +100,6 @@ scripts/quickstart-cleanroom/artifacts/
 
 # Written by Claude Code when it loads the plugin (#1471); vendored copy: tools/proof9-types/
 proof9/.claude-plugin/types/
+
+# Brand source files (owner-supplied); the site copies only what it uses.
+brand-assets/

@@ -65,6 +65,8 @@ def test_no_script_form_or_third_party_resource():
 
 def test_local_assets_ship_inside_site():
     refs = re.findall(r'(?:src|srcset)="([^"]+)"', PAGE)
+    # Icons too: a missing favicon fails silently in the browser (#1476).
+    refs += re.findall(r'<link rel="(?:icon|apple-touch-icon)"[^>]+href="([^"]+)"', PAGE)
     assert refs, "page references no assets"
     for ref in refs:
         assert "://" not in ref and not ref.startswith(("/", "..")), ref
