@@ -231,6 +231,13 @@ describe('review fixes', () => {
     expect(out.deny).toBeDefined()
   })
 
+  test('exit 1 with failed:false is an error too, so block mode denies', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json(PASSING_RUN, 1))
+    const out = await bash($, 'git commit -m x')
+    expect(w.commands).toEqual([])
+    expect(out.deny).toBeDefined()
+  })
+
   test('a non-empty ledger that verified nothing (exit 2) says so and does not block', { options: { mode: 'block' } }, async ($, on) => {
     const w = world(on, json({ ...EMPTY_LEDGER, empty_reason: 'excluded_by_config', description: 'gates disabled' }, 2))
     await bash($, 'git commit -m x')
