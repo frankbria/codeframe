@@ -266,8 +266,8 @@ class TestRun:
 
     def test_progress_lines_stay_off_stdout(self, ws):
         result = _cf("run", "-w", str(ws), "--json")
-        assert "Running proof obligations" in result.stderr
-        assert "Running proof obligations" not in result.stdout
+        assert "Checking requirements" in result.stderr
+        assert "Checking requirements" not in result.stdout
 
 
 class TestExitCodesMatchTheTextOutput:

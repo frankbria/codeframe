@@ -122,7 +122,7 @@ def _describe_mixed(d: "ProofRunDiagnostics") -> str:
     if d.scope_skipped:
         parts.append(f"{len(d.scope_skipped)} out of scope for the current changes")
     if d.no_obligations:
-        parts.append(f"{len(d.no_obligations)} with no obligations defined")
+        parts.append(f"{len(d.no_obligations)} with no checks defined")
     if d.gate_filtered:
         parts.append(f"{len(d.gate_filtered)} excluded by the --gate filter")
     if d.config_filtered:
@@ -152,20 +152,20 @@ _REASON_TEXT = {
         "current changes — re-run with --full to include them"
     ),
     EmptyReason.EXCLUDED_BY_GATE_FILTER: lambda d: (
-        f"the --gate filter excluded every obligation of all "
+        f"the --gate filter excluded every check of all "
         f"{len(d.gate_filtered)} in-scope requirement(s)"
     ),
     EmptyReason.EXCLUDED_BY_CONFIG: lambda d: (
-        f"enabled_gates in proof_config.json excluded every obligation of all "
+        f"enabled_gates in proof_config.json excluded every check of all "
         f"{len(d.config_filtered)} in-scope requirement(s)"
     ),
     EmptyReason.EXCLUDED_BY_FILTER_COMBINATION: lambda d: (
         f"--gate and enabled_gates in proof_config.json do not overlap, so no "
-        f"obligation of the {len(d.filter_combination)} in-scope requirement(s) "
+        f"check of the {len(d.filter_combination)} in-scope requirement(s) "
         "could run — each filter alone would have left something to do"
     ),
     EmptyReason.NO_OBLIGATIONS: lambda d: (
-        f"all {len(d.no_obligations)} in-scope requirement(s) define no obligations"
+        f"all {len(d.no_obligations)} in-scope requirement(s) define no checks"
     ),
     EmptyReason.MIXED: _describe_mixed,
 }
@@ -557,7 +557,7 @@ def run_proof_with_diagnostics(
     if enabled_gates is not None and not enabled_gates:
         logger.warning(
             "Proof run %s: all 9 gates are disabled by proof_config.json — "
-            "no obligations will run and the run will pass vacuously",
+            "no checks will run and the run will pass vacuously",
             run_id,
         )
 
@@ -677,7 +677,7 @@ def run_proof_with_diagnostics(
                     ledger.save_requirement(workspace, req)
                     ledger.reopen_requirement(
                         workspace, req.id,
-                        reason="obligations no longer all pass",
+                        reason="its checks no longer all pass",
                     )
                 else:
                     ledger.save_requirement(workspace, req)

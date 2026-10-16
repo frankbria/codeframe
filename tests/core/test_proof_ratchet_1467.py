@@ -98,7 +98,7 @@ class TestLockIn:
         result = _ratchet(repo)
 
         assert result.exit_code == 0, result.output
-        assert "Locked in 2 passing tests as obligations." in result.text
+        assert "Locked in 2 passing tests as requirements." in result.text
         assert LOCKED in result.text
 
         reqs = _ratcheted(repo)
@@ -260,7 +260,7 @@ class TestRerun:
         second = _ratchet(repo)
 
         assert second.exit_code == 0, second.output
-        assert "Locked in 1 passing test as obligations." in second.text
+        assert "Locked in 1 passing test as requirements." in second.text
         assert set(_ratcheted(repo)) == {"test_add", "test_sub", "test_broken"}
 
 

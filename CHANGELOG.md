@@ -27,6 +27,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **`cf proof` speaks the plugin's vocabulary** (#1507). Console output and
+  `--help` say "requirement" and "check" instead of "obligation", and name each
+  check by its gate in words (`security`, `end-to-end`, …). `--json` output is
+  unchanged: `obligations` stays the field name. A source guard keeps the word
+  out of the CLI's prose.
+
 - **A plain `cf proof run` re-checks satisfied requirements your changes
   touch** (#1484). It used to load only open requirements, so a satisfied
   ratchet lock re-failed only under `--full`. Now, whenever there is a diff,
