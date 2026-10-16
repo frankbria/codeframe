@@ -3,7 +3,7 @@
   "rules": [
     {
       "path": "rules/crap-gate.md",
-      "hash": "df9eb9b731d75147209b4a6539f9464cf5e4e628ac1f359880fe3b5f6d1f325d",
+      "hash": "eef8dd08b45235078d97089100acee68b145882f85aa5223dd1427c8a6b61314",
       "description": "Keep changed code within the CRAP ceiling",
       "globs": [],
       "dirs": [],
@@ -14,7 +14,7 @@
     },
     {
       "path": "rules/reuse-first.md",
-      "hash": "0f394c64fde06e27351a5398a6a8e7c98f863fc86eab4be45676e6bc6da8b5b4",
+      "hash": "7235e7c21d9fc5f0131b86860e9fa892b03317dbfa20628b2237f24be92b4d7c",
       "description": "Reuse-first implementation in CodeFRAME",
       "globs": [],
       "dirs": [],

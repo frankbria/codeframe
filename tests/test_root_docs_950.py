@@ -70,6 +70,8 @@ class TestEveryRelativeLinkResolves:
 
     @pytest.mark.parametrize("doc", ROOT_DOCS)
     def test_no_link_points_at_a_missing_path(self, doc: str):
+        if doc == "CHANGELOG.md":
+            pytest.skip("released entries are history; they may link to paths since removed (#1477)")
         broken = [t for t in _links(doc) if not (REPO_ROOT / t).exists()]
 
         assert not broken, f"{doc} links to paths that do not exist: {broken}"
@@ -160,32 +162,6 @@ class TestTheRoadmapDoesNotContradictItself:
     def _readme(self) -> str:
         return (REPO_ROOT / "README.md").read_text()
 
-    @pytest.mark.parametrize(
-        "claim,component",
-        [
-            ("Run gates from the web UI", "web-ui/src/components/proof/GateRunPanel.tsx"),
-            ("Glitch capture web UI", "web-ui/src/components/proof/CaptureGlitchModal.tsx"),
-            (
-                "PR status tracking + CI check display in web UI",
-                "web-ui/src/components/review/PRStatusPanel.tsx",
-            ),
-        ],
-    )
-    def test_a_shipped_feature_is_not_still_listed_as_pending(
-        self, claim: str, component: str
-    ):
-        """Each pairs a roadmap line with the file that proves it shipped, so the
-        checkbox cannot be flipped back without deleting the component."""
-        assert (REPO_ROOT / component).exists(), (
-            f"{component} is gone — the roadmap claim for {claim!r} needs revisiting"
-        )
-        assert f"- [ ] {claim}" not in self._readme(), (
-            f"{claim!r} is marked pending although {component} ships it"
-        )
-
-    def test_the_req_detail_route_exists_as_the_roadmap_claims(self):
-        assert (REPO_ROOT / "web-ui/src/app/proof/[req_id]").is_dir()
-
     def test_every_checkbox_is_one_of_the_two_valid_forms(self):
         """A typo'd `- [X]` or `- []` silently renders as plain text, which is
         how a stale entry survives review."""
@@ -219,26 +195,6 @@ class TestContributingTeachesTheRealAuthModel:
             f"CONTRIBUTING still teaches {dead!r}, which no longer exists"
         )
 
-    @pytest.mark.parametrize(
-        "name", ["require_auth", "CODEFRAME_AUTH_REQUIRED", "require_method_scope"]
-    )
-    def test_the_real_model_is_documented(self, name: str):
-        assert name in self._contributing()
-
-    @pytest.mark.parametrize(
-        "name", ["require_auth", "require_method_scope", "require_scope"]
-    )
-    def test_each_documented_symbol_actually_exists(self, name: str):
-        """Naming the right thing is only half of it — the names have to be real."""
-        from codeframe.auth import dependencies
-
-        assert hasattr(dependencies, name)
-
-    def test_the_env_switch_it_names_is_the_one_the_code_reads(self):
-        source = (REPO_ROOT / "codeframe/auth/dependencies.py").read_text()
-
-        assert "CODEFRAME_AUTH_REQUIRED" in source
-
 
 class TestTestingMdDescribesTheCurrentSuite:
     def _testing(self) -> str:
@@ -252,7 +208,6 @@ class TestTestingMdDescribesTheCurrentSuite:
 
         assert "uv run pytest" in text
         assert "uv run ruff check ." in text
-        assert "npm run build" in text
 
     def test_every_test_directory_it_lists_exists(self):
         listed = re.findall(r"`(tests/[\w/]+)/`", self._testing())

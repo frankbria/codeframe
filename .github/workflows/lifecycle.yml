@@ -11,7 +11,7 @@ on:
         required: false
         default: 'cli'
         type: choice
-        options: [cli, api, web, all]
+        options: [cli]
       model:
         description: 'LLM model (haiku = cheaper, sonnet = stronger)'
         required: false
@@ -24,7 +24,6 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  NODE_VERSION: '24'
 
 jobs:
   lifecycle:
@@ -64,9 +63,6 @@ jobs:
           MODE="${{ inputs.mode || 'cli' }}"
           case "$MODE" in
             cli)  echo "path=tests/lifecycle/test_cli_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
-            api)  echo "path=tests/lifecycle/test_api_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
-            web)  echo "path=tests/lifecycle/test_web_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
-            all)  echo "path=tests/lifecycle/" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Run lifecycle tests

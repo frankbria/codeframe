@@ -96,19 +96,6 @@ class TestEntryPointsHarden:
         cli_app.main()
         assert calls == [1]
 
-    def test_server_lifespan(self, tmp_path, monkeypatch):
-        from fastapi.testclient import TestClient
-
-        from codeframe.core import agent_env
-        from codeframe.ui import server
-
-        monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "state.db"))
-        calls = []
-        monkeypatch.setattr(agent_env, "make_process_nondumpable", lambda: calls.append(1))
-        with TestClient(server.app):
-            pass
-        assert calls == [1]
-
 
 class _FakeLibc:
     def __init__(self, rc):

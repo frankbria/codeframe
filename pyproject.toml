@@ -42,14 +42,9 @@ dependencies = [
     # Capped at the tested major (#1268, the #1168 lesson): an unlocked install
     # resolved openai 3.x against a locked 2.x with nothing checking it.
     "openai>=1.12.0,<3",
-    "fastapi>=0.109.0",
-    "uvicorn[standard]>=0.27.0",
-    "websockets>=12.0",
     "pydantic>=2.6.0",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.2.2",
-    "sqlalchemy>=2.0.0",
-    "aiosqlite>=0.19.0",
     "aiohttp>=3.14.0",
     # Direct import since #1288: webhook pinning keys on URL.raw_host (the IDNA
     # host aiohttp dials). Major capped like every SDK whose API we call.
@@ -70,8 +65,6 @@ dependencies = [
     "tree-sitter-python>=0.20.4",
     "tree-sitter-javascript>=0.20.3",
     "tree-sitter-typescript>=0.20.3",
-    "tiktoken>=0.12.0",
-    "radon>=6.0.1",
     # pytest is a RUNTIME dependency on purpose: `cf` shells out to it for the
     # PROOF9 test gate (core/gates.py, core/tools.py) and the generated PROOF9
     # stubs `import pytest`. Floor >= 9.0.3 is GHSA-6w46-j5rx-g56g (#1244); the
@@ -81,36 +74,21 @@ dependencies = [
     "pytest-asyncio>=1.4.0",
     "pytest-json-report>=1.5.0",
     "hypothesis>=6.148.0",
-    "fastapi-users[sqlalchemy]>=15.0.2",
     "filelock>=3.0",
-    # bcrypt: api_keys.py hashes/verifies with it directly (passlib was removed
-    # in #968 — it had no importer, and bcrypt was arriving only transitively
-    # via fastapi-users -> pwdlib).
-    "bcrypt>=4.2.0",
     "keyring>=24.0.0",
     "jinja2>=3.1.6",
-    "slowapi>=0.1.9",
     "rapidfuzz>=3.0.0",
     # Security floors — pin transitive deps to patched versions for Dependabot CVE alerts (#659).
-    # These are pulled by fastapi / fastapi-users / mcp / keyring; floored here so
+    # These are pulled by keyring and the HTTP clients; floored here so
     # `uv lock` resolves to non-vulnerable versions regardless of the parents' lower bounds.
-    "starlette>=1.0.1",       # Range-header FileResponse O(n^2) DoS (forces a compatible fastapi)
-    "python-multipart>=0.0.27",  # arbitrary file write + DoS in multipart parsing
-    "pyjwt>=2.15.0",          # crit headers; PEM/JWK/BOM HMAC-key confusion, empty-key + RecursionError DoS
     "cryptography>=46.0.7",   # subgroup attack on SECT curves
     "urllib3>=2.8.0",         # redirect header leak, decompression bombs; unbounded chunk buffering, proxy TLS
-    "mcp>=1.23.0",            # DNS-rebinding protection off by default
     "idna>=3.15",             # DoS in IDNA processing
 ]
 
 [project.optional-dependencies]
 cloud = [
     "e2b>=2.0.0",
-]
-# Shared rate-limit counters for multi-worker servers: RATE_LIMIT_STORAGE=redis
-# (#1289). limits' own extra, so it keeps choosing the redis range it supports.
-redis = [
-    "limits[redis]",
 ]
 dev = [
     "pytest>=9.0.3,<10",
@@ -125,7 +103,7 @@ dev = [
     "hypothesis>=6.0.0",
     "e2b>=2.0.0",
     "jsonschema>=4.0.0",  # codex app-server protocol contract test (#914)
-    "limits[redis]",  # imports the server with RATE_LIMIT_STORAGE=redis (#1289)
+    "fastapi>=0.109.0",  # scripts/telemetry_collector.py and its test
 ]
 
 [project.scripts]
@@ -142,7 +120,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["codeframe*"]
-exclude = ["codeframe.tests*", "tests*", "web-ui*", "legacy*"]
+exclude = ["codeframe.tests*", "tests*", "legacy*"]
 
 [tool.setuptools.package-data]
 codeframe = ["templates/*", "templates/**/*"]

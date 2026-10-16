@@ -13,12 +13,6 @@
   no config knob unless a user needs it.
 - Logging via `logging.getLogger(__name__)`; no `print` in core.
 
-## TypeScript / web-ui
-
-- Next.js App Router, TypeScript strict, Shadcn/UI + Tailwind, `@hugeicons/react` icons (never
-  lucide), Nunito Sans; data via SWR + `lib/api.ts` clients.
-- Hooks in `src/hooks/use*.ts`; streams use async `buildUrl` so each reconnect fetches a fresh ticket.
-
 ## Commits & PRs
 
 Conventional commits with the issue number (`fix(prd): … (#1443)`); feature branches → PR to `main`;

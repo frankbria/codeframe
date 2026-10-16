@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-09-17
+Last updated: 2026-10-16
 
 ## Product Vision
 
@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge <number>
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 4B** — See `docs/PRODUCT_ROADMAP.md`.
+**Status: CLI ✅ | ReAct agent ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | proof9 plugin ✅ | Web UI + server removed (#1477) | Next: Phase 4B** — See `docs/PRODUCT_ROADMAP.md`.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -28,7 +28,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 1) **Golden Path**: `docs/GOLDEN_PATH.md` — the only workflow we build until it works end-to-end
 2) **Command Tree + Module Mapping**: `docs/CLI_WIREFRAME.md` — CLI commands → core modules
-3) **Product Roadmap**: `docs/PRODUCT_ROADMAP.md` — current phase plan (Phase 3.5/4/5)
+3) **Product Roadmap**: `docs/PRODUCT_ROADMAP.md` — current phase plan and status
 4) **Vision**: `docs/VISION.md` — north star for all decisions
 5) **Agent System Reference**: `docs/AGENT_SYSTEM_REFERENCE.md` — agent components, execution flows
 
@@ -36,37 +36,23 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ### Current Focus: Phase 4B
 
-**Phase 5.5 is complete** — GitHub Issues import. Repo connection via PAT (#563) is **complete**: Settings → **Integrations** tab connects a GitHub repo with a Personal Access Token. Backend `POST/DELETE/GET /api/v2/integrations/github/{connect,disconnect,status}` (`ui/routers/github_integrations_v2.py`). Validation is headless in `core/github_connect_service.py` (httpx; verifies token, repo visibility, and issues-read access; typed errors → 400/404/403 — a bad PAT is 400 `UPSTREAM_AUTH_FAILED`, never 401, so the web UI doesn't treat it as session expiry, #734). The PAT is stored in the connecting user's own `CredentialManager` store (`CredentialProvider.GIT_GITHUB`, the #555 pattern; every principal has a user_id since #963) and **never returned in any response**; non-secret repo metadata persists per-workspace in `.codeframe/github_integration.json` (`core/github_integration_config.py`). Frontend: `GitHubIntegrationCard` + `integrationsApi`.
+**The web UI, the FastAPI server, the auth layer and the deploy stack were removed (#1477).** The product is the `cf` CLI, the `cf dashboard` TUI and the proof9 Claude Code plugin (`proof9/`), which drives `cf proof … --json` and is the front door for the proof ledger. Phases 3.5, 5.1–5.5 shipped web features; their web surfaces went with #1477. What remains in core:
 
-Issue **browse** (#564) is **complete**: `GET /api/v2/integrations/github/issues?page&per_page&search&label` on the same router lists the connected repo's **open** issues (PRs filtered out) — repo from `.codeframe/github_integration.json`, PAT from `CredentialManager`, **409** when not connected. Headless fetch in `core/github_issues_service.py` (`list_issues`): plain `/repos/{o}/{r}/issues` by default, routes to `/search/issues` for free-text search, `labels=` filter, `Link`-header pagination, 60s in-process TTL cache, typed errors → 502/403/429/502 (a rejected stored PAT is 502 `UPSTREAM_AUTH_FAILED`, never 401 — #734; `pr_v2.py` likewise remaps upstream GitHub 401s to 502 via `_github_error_http`). Three #956 invariants hold here: the cache key is a **tuple** `(repo, page, per_page, search, label, user_id)` — never a `|`-joined string, which let a `|` in the search text collide with the label field; free-text search is quoted **per word** by `_sanitize_search` so it cannot inject `repo:`/`is:` qualifiers and escape the connected repo — and **every other user field that lands in `q` needs the same treatment**: the `label` qualifier shipped without it and reopened the hole (#1275; `"` is now stripped from it too); and a 403/429 that is really throttling (`Retry-After` / `X-RateLimit-Remaining: 0` / a body message naming the limit) raises `RateLimitedError` → **429** `RATE_LIMITED` instead of being misreported as a missing `issues:read` scope. Frontend: `GitHubIssueImportModal` (paginated list, debounced search, label filter, multi-select that persists across pages, select-all-on-page, Import-Selected gated on ≥1) + `integrationsApi.getIssues`; an **Import from GitHub** button on `/tasks` (`TaskBoardView`) shown only when connected.
+- **GitHub Issues (#563–565)**: `core/github_connect_service.py`, `core/github_issues_service.py` (`list_issues`, `get_issue`, `close_issue`) and `core/github_integration_config.py` remain; there is no CLI import command. Three #956 invariants hold in `list_issues`: the cache key is a **tuple** `(repo, page, per_page, search, label, user_id)` — never a `|`-joined string, which let a `|` in the search text collide with the label field; free-text search is quoted **per word** by `_sanitize_search` so it cannot inject `repo:`/`is:` qualifiers and escape the connected repo — and **every other user field that lands in `q` needs the same treatment**: the `label` qualifier shipped without it and reopened the hole (#1275; `"` is now stripped from it too); and a 403/429 that is really throttling (`Retry-After` / `X-RateLimit-Remaining: 0` / a body message naming the limit) raises `RateLimitedError` instead of being misreported as a missing `issues:read` scope. **Auto-close**: marking an opted-in imported task DONE closes the linked issue — fired from core `tasks.update_status`, targeting the task's *source* repo parsed from `external_url`, off the caller's path (non-daemon thread in CLI). The PAT comes from `github_integration_config.resolve_background_pat` (#900, #1283).
+- **Cost tracking (#557–558)**: token usage is recorded per task in `token_usage` and reported by `cf stats`. A v2 data-loss bug where `react_agent` int-cast UUID task IDs and stored NULL was fixed; a second instance of the same class was fixed later: `CallType` had no `verification_fix` member, so `TokenUsage` rejected every self-correction retry's record and `_persist_token_usage` dropped it with only a WARNING (#712). **Any new `call_type` literal must be added to `CallType` in `core/models.py`** — `tests/core/test_react_agent_tokens.py::TestEveryEmittedCallTypeIsValid` enforces this.
+- **Outbound webhook (#560)**: `codeframe/notifications/webhook.py` (`WebhookNotificationService`), configured by `.codeframe/notifications_config.json`, dispatched fire-and-forget (5s timeout) from `core/conductor.py` on `BATCH_COMPLETED` only and from `core/blockers.py:create()` after `BLOCKER_CREATED`. Failures are logged but never break the triggering operation.
+- **PROOF9 config (#556)**: `run_proof()` honors `enabled_gates` filtering and `strictness` (`strict` vs `warn`) from `.codeframe/proof_config.json`. The 9-gate canonical order and the filename live in `codeframe/core/proof/models.py`.
+- **PRD stress-test (#561–562)**: `cf prd stress-test` runs `core/prd_stress_test.py`; ambiguities carry `Ambiguity.severity` (`"blocking"`/`"warning"`), and `resolve_ambiguities_into_prd` + `prd.create_new_version` fold answers into a new PRD version.
 
-Issue **import + traceability** (#565) is **complete**: `POST /api/v2/integrations/github/import` (same router) turns selected issues into tasks — title verbatim, body as description (+ a best-effort `**Labels:**` footer), linked via `github_issue_number` + `external_url`; PRs are rejected (`NotAnIssueError`→422), missing issues 404, fetch failures 502, malformed saved repo 409. Import is two-phase (fetch+dedupe all, then create) with rollback on a mid-create DB error; dedup is keyed on the full issue URL and backed by a `UNIQUE(workspace_id, external_url)` index (atomic across concurrent imports). Issue ops live in `core/github_issues_service.py` (`get_issue`, `close_issue`). **Auto-close**: marking an opted-in imported task DONE closes the linked issue — fired from core `tasks.update_status` so the web UI, CLI, and agent/batch paths all trigger it; the close targets the task's *source* repo parsed from `external_url` (not the live connection) and runs off the caller's path (event loop in the server, non-daemon thread in CLI). `TaskResponse` exposes the three traceability fields; `PATCH /api/v2/tasks/{id}` accepts `auto_close_github_issue` (persist-first + rollback-on-rejected-transition, with late opt-in on already-DONE tasks). Frontend: `GitHubIssueBadge`, import wiring in `TaskBoardView` (progress, in-modal error, summary banner), badge + auto-close checkbox in `TaskDetailModal`, `integrationsApi.importIssues` + `tasksApi.updateGitHubSettings`. Auto-close and reconciliation use the PAT the connecting user stored (`github_integration_config.resolve_background_pat`; store only, so an ambient `GITHUB_TOKEN` never stands in for a user's connection), else the machine-wide store and then `GITHUB_TOKEN`, which is skipped in hosted mode, where the environment is the operator's (#900, #1283). The connecting user is recorded by the connect route in `~/.codeframe/github_connection_owners.json`, **never in the workspace**: `.codeframe/` is writable by whatever runs there, and an owner id read from it would unlock another account's PAT. **Known limitation**: after reconnecting to a different repo, an older imported task's issue is closed with the *current* connection's PAT, which may lack access to the older repo.
+**PROOF9 merge gate is enforced (#731)** — `cf pr merge` blocks while open (non-waived) requirements exist on the cwd workspace (`--override --reason "..."` to bypass; no workspace in cwd → no gate). The override is persisted to the `pr_merge_overrides` ledger table (actor, reason, bypassed requirements, timestamp). The #1247 follow-ups are **shipped**, and they changed three things worth knowing:
 
-**Phase 5.4 is complete** — PRD stress-test web UI: trigger + streaming (#561). Backend: `GET /api/v2/prd/stress-test` SSE endpoint streams `goals_extracted`, `goal_analyzed`, `complete`, and `error` events from `core/prd_stress_test.py:stress_test_prd_stream()`, resolving the LLM provider via the standard chain and applying the standard rate limit. Frontend: `useStressTestStream` hook manages the SSE connection and event accumulation; `StressTestModal` renders the streaming progress and is opened via a "Stress Test" button on the `/prd` page (enabled only when a PRD exists). Results rendering + refinement (#562) is **complete**: the `complete` SSE event now carries structured, severity-tagged `ambiguities` (`Ambiguity.severity` is `"blocking"`/`"warning"`); `StressTestModal` shows a results view of `AmbiguityCard`s (question text, severity badge, answer textarea) with an "X of Y answered" progress indicator and a **[Refine PRD]** button (disabled until every blocking ambiguity is answered). Refine posts to `POST /api/v2/prd/stress-test/refine`, which folds the answers into a new PRD version via `resolve_ambiguities_into_prd` (offloaded with `asyncio.to_thread`) and `prd.create_new_version`, then `mutatePrd` reflects it in the editor.
+**The gate is scoped to the PR's changed files.** `list_blocking_requirements(workspace, changed_scope=None)` filters through `scope.intersects` — the same predicate `run_proof` has used since #922, not a second merge-specific rule. `changed_scope=None` means match-everything, so an omitted argument can never loosen the gate, and every failure path (outage, rate limit, missing credential, empty file list) falls back to it. The file list is fetched **only when something would otherwise block**, so a clean merge does not depend on a GitHub call. `_resolve_pr_scope` in `codeframe/cli/pr_commands.py` (#1254) fetches the PR's files and returns `None` on any failure. It asks for `include_previous=True`: GitHub reports a rename under its new path only, and without the old one a rename escaped the requirement scoped to it (a P1 found in review — **fail-closed defends against failures, not against correct-looking but incomplete input**). It resolves credentials through the headless `resolve_github_credentials`, not `_get_github_config`: that one prints and raises `typer.Exit`, so a merge about to be refused on requirements would have reported a credential problem instead.
 
-**Phase 5.3 is complete** — Async notifications cover both surfaces:
-- **Browser + in-app center (#559)**: `useNotifications` hook with workspace-scoped `localStorage` persistence and browser Notification dispatch (only when tab hidden + permission granted); `NotificationProvider` in root layout; `NotificationCenter` (bell icon + dropdown) mounts in sidebar footer. `/execution` requests browser permission once on mount when permission is `'default'`. `/proof` dispatches `gate.run.failed` per failed gate when a proof run completes with `passed === false`. **Background delivery (#652)**: a cross-page watcher (`useBatchNotificationWatcher`, mounted once in `NotificationProvider` in the root layout so it runs on every route) polls `GET /api/v2/batches` and is the single dispatcher of `batch.completed` (terminal transitions, distinguishing COMPLETED/FAILED/CANCELLED) and `blocker.created` (per-task BLOCKED transitions) — so these fire even when `BatchExecutionMonitor` is unmounted. The watcher baselines on its first poll (no spurious alerts for already-terminal/blocked batches), resets on workspace change, and guards against overlapping in-flight polls; `BatchExecutionMonitor` no longer dispatches them (avoids duplicates). Remaining limitation: `gate.run.failed` stays page-scoped to `/proof` (a proof run is a synchronous request/response the user actively watches, not a server-tracked background job).
-- **Outbound webhook (#560)**: Settings → Notifications tab takes a single URL + enabled toggle, persisted to `.codeframe/notifications_config.json` via `atomic_write_json`. `GET/PUT /api/v2/settings/notifications` and `POST /api/v2/settings/notifications/test` (test fires a sample payload and surfaces status code). `WebhookNotificationService.send_event` is the generic backend; dispatched fire-and-forget (5s timeout) from `core/conductor.py` on `BATCH_COMPLETED` only (not PARTIAL/FAILED/CANCELLED), `core/blockers.py:create()` after `BLOCKER_CREATED`, and `ui/routers/pr_v2.py:merge_pull_request` after successful merge. Failures are logged but never break the triggering operation.
+**Three more fail-opens closed in #1276.** A WAIVED requirement whose waiver expired blocks; the check is read-only, and reverting the status stays `cf proof`'s job. `get_pr_files(require_complete=True)` raises `IncompletePRFilesError` at GitHub's 3000-file cap, or when the count disagrees with the PR's `changed_files`; the gate then falls back to `None`. Legacy absolute `scope.files` from 0.9.3 are rewritten once per process by `ledger._normalize_absolute_scope_files`. It uses `scope._is_absolute_path` and `_relativize` on **one entry at a time**, never `build_scope_from_capture`, which splits on commas.
 
-**Phase 5.2 is complete** — Costs page now ships per-task and per-agent breakdowns (#558) on top of the spend summary (#557). Backend: `GET /api/v2/costs/tasks?days=N&limit=M` (top-N tasks with titles, agent, tokens, cost) and `GET /api/v2/costs/by-agent?days=N` (per-agent rollup + total input/output tokens), both via `TokenRepository.get_top_tasks_by_cost` and `get_costs_by_agent`. Task board cards show an inline `MoneyBag02Icon` cost badge with token-breakdown tooltip when cost data exists. Fixed a v2 data-loss bug where `react_agent` int-cast UUID task IDs and stored NULL in `token_usage`. A second instance of the same class was fixed later: `CallType` had no `verification_fix` member, so `TokenUsage` rejected every self-correction retry's record and `_persist_token_usage` dropped it with only a WARNING (#712). **Any new `call_type` literal must be added to `CallType` in `core/models.py`** — `tests/core/test_react_agent_tokens.py::TestEveryEmittedCallTypeIsValid` enforces this.
+The mutation check that shipped #1254 found the rename case was pinned by a test that *passed with the defect present*: its mock asserted `include_previous` in-band, and the `AssertionError` was swallowed by the gate's own fail-closed `except Exception`, which blocks the merge anyway. The rename test now makes the mock **behave** like GitHub (post-rename path only when not asked for previous) and asserts on the outcome. **A fail-closed handler will absorb an in-band test assertion and turn a red test green** — assert on behaviour, not on the mock's own arguments, anywhere a bare `except Exception` sits downstream.
 
-**Phase 5.1 is complete** — Settings page now ships three working tabs: Agent (#554), API Keys (#555), and PROOF9 Defaults + Workspace Config (#556). Backend: `GET/PUT /api/v2/proof/config` and `/api/v2/workspaces/config`, plus `run_proof()` now honors `enabled_gates` filtering and `strictness` (`strict` vs `warn`). Atomic JSON writes via `codeframe/ui/routers/_helpers.atomic_write_json`. The 9-gate canonical order and `proof_config.json` filename live in `codeframe/core/proof/models.py`.
-
-**Phase 3.5C is complete** — `CaptureGlitchModal` form (description/markdown, source, scope, gate obligations, severity, expiry) reachable from the PROOF9 page and the persistent sidebar "Capture Glitch" button. REQ detail view (`/proof/[req_id]`) ships markdown description rendering, `ProofScope` metadata display, obligations table with `Latest Run` column, sortable/filterable evidence history, and empty-state CTA. Backend: `ScopeOut` model on `RequirementResponse`. Issues #568, #569.
-
-**v2 API auth enforcement (#336) is complete** — all 22 v2 REST routers require auth (`require_auth`: JWT Bearer or `X-API-Key`) via router-level dependencies in `server.py`; env-gated `CODEFRAME_AUTH_REQUIRED` (default **ON**; set `false` for local dev — read at request time). Streams never carry the JWT in the URL (#745): an authenticated `POST /auth/stream-ticket` (write scope; `has_scope`, so admin implies write) mints a 60s **single-use** ticket (`codeframe/auth/stream_tickets.py`, in-process store — multi-worker caveat documented in the module), redeemed as `?ticket=` **only** on the two SSE routes (allowlist `_QUERY_TICKET_PATHS` in `codeframe/auth/dependencies.py`) and by `authenticate_websocket` for the two WS routes; `?token=<JWT>` is no longer accepted anywhere. Frontend fetches a fresh ticket per (re)connect via `fetchStreamTicket()`/`withStreamTicket()`; `useEventSource`/`useTerminalSocket` take an async `buildUrl` re-resolved on every retry. `/auth/register` admits only the bootstrap first user (403 after; seeded `!DISABLED!` admin excluded; in-process lock closes the TOCTOU window), and `UserManager.on_after_register` promotes that sole account to `is_superuser`.
-
-**Scopes are real, not decorative (#898)** — a JWT principal's scopes now derive from its user row: `[read, write]` always, plus `admin` only when `is_superuser`. So `require_scope(SCOPE_ADMIN)` (credential storage, GitHub PAT storage, PR merge) genuinely refuses a non-superuser browser session. Corollaries: only a superuser may mint an `admin`-scoped API key (`api_key_router.create_api_key`, else any user could self-escalate); the API-key router carries a router-level `require_method_scope` so a read-scope key can no longer DELETE keys; `SchemaManager._ensure_bootstrap_superuser` backfills admin to the earliest login-capable account when an upgraded instance has none (otherwise the change silently strips the operator's admin). The auth-disabled synthetic principal is unchanged — it still carries all scopes, being the single-operator local opt-out. **The terminal WS is admin-only and hosted mode refuses execution (#1266):** a stream ticket records whether its *minting* principal had admin (`mint_ticket(..., admin=has_scope(...))`), so a write-scoped key owned by a superuser cannot open a shell; `authenticate_websocket(require_admin=True)` closes `4403`. In hosted mode the terminal closes `4403` and every route that runs tenant code returns 403 via `ui/dependencies.refuse_execution_in_hosted_mode` — **a new route that spawns work must add it**, because processes run as the server uid and `<WORKSPACE_ROOT>/<user_id>` only checks a starting path. Workspace registry ownership is write-once in the same change: `upsert` never reassigns a non-NULL `owner_user_id`, so user B cannot take over user A's `repo_path` by re-registering it. Web UI: `/login` page (sign-in + create-first-account), proactive client-side auth guard in `AppLayout` (token-present → allow; no token → `checkAuthAccess` probe → allow only on explicit 2xx, else fail closed to `/login`; #651, #783), axios Bearer interceptor for reactive 401→`/login` redirect, SSE/WS hooks probe the `require_auth`-gated `/api/v2/settings/keys` (which respects `CODEFRAME_AUTH_REQUIRED`) on stream failure to catch token expiry (#651), SSE hooks append a fresh stream ticket, sidebar logout; `/auth/*` proxied in `next.config.js`. Backend tests run auth-off via root `tests/conftest.py` `setdefault`; `tests/ui/test_v2_auth_enforcement.py` opts back in.
-
-**PROOF9 merge gate is enforced (#731)** — `POST /api/v2/pr/{n}/merge` blocks while open (non-waived) requirements exist (409 with a blocking-requirement summary; ledger failure → explicit 500, never a silent pass-through). Explicit bypass: `override: true` + `override_reason` in `MergePRRequest`; the override is persisted to the `pr_merge_overrides` ledger table (actor from `require_auth`, reason, bypassed requirements, timestamp) and surfaced as `merge_override` on `GET /api/v2/pr/history` items. `cf pr merge` enforces the same gate on the cwd workspace (`--override --reason "..."` to bypass, same audit record; no workspace in cwd → no gate). The #1247 follow-ups are **shipped**, and they changed three things worth knowing:
-
-**The gate is scoped to the PR's changed files.** `list_blocking_requirements(workspace, changed_scope=None)` filters through `scope.intersects` — the same predicate `run_proof` has used since #922, not a second merge-specific rule. `changed_scope=None` means match-everything, so an omitted argument can never loosen the gate, and every failure path in the API gate (outage, rate limit, missing credential, empty file list) falls back to it. The file list is fetched **only when something would otherwise block**, so a clean merge does not depend on a GitHub call. It asks for `include_previous=True`: GitHub reports a rename under its new path only, and without the old one a rename escaped the requirement scoped to it (a P1 found in review — **fail-closed defends against failures, not against correct-looking but incomplete input**). `cf pr merge` scopes the same way since #1254 — `_resolve_pr_scope` in `codeframe/cli/pr_commands.py` fetches the PR's files and returns `None` on any failure, which is the same match-everything fallback. It resolves credentials through the headless `resolve_github_credentials`, not `_get_github_config`: that one prints and raises `typer.Exit`, so a merge about to be refused on requirements would have reported a credential problem instead.
-
-**Three more fail-opens closed in #1276.** A WAIVED requirement whose waiver expired blocks; the check is read-only, and reverting the status stays `cf proof`'s job. `get_pr_files(require_complete=True)` raises `IncompletePRFilesError` at GitHub's 3000-file cap, or when the count disagrees with the PR's `changed_files`; both gates then fall back to `None`. Legacy absolute `scope.files` from 0.9.3 are rewritten once per process by `ledger._normalize_absolute_scope_files`. It uses `scope._is_absolute_path` and `_relativize` on **one entry at a time**, never `build_scope_from_capture`, which splits on commas.
-
-The mutation check that shipped #1254 found the rename case was pinned by a test that *passed with the defect present*: its mock asserted `include_previous` in-band, and the `AssertionError` was swallowed by the gate's own fail-closed `except Exception`, which blocks the merge anyway. Both the CLI and API rename tests now make the mock **behave** like GitHub (post-rename path only when not asked for previous) and assert on the outcome. **A fail-closed handler will absorb an in-band test assertion and turn a red test green** — assert on behaviour, not on the mock's own arguments, anywhere a bare `except Exception` sits downstream.
-
-The cross-family review of the same change found the matching fail-*open*: `build_scope_from_capture` stores a `--where` string verbatim, so a requirement captured as `./x.py` never matched anything and dropped out of every scoped run. Workspace-global scope hid it (the gate blocked regardless); scoping the CLI made it a silent merge. `scope._files_intersect` now normalizes both sides through `posixpath.normpath`, which fixes both gates and `run_proof` at once. A second review pass found the same fail-open in another spelling: the first fix collapsed root-equivalent paths (`./`, `src/..`) to `""` and *skipped* them, so a requirement scoped to the repo root matched nothing at all. `_normalize` now returns `"."` for the root and `_files_intersect` treats it as covering every file. **A normalizer that maps a meaningful value onto its own "nothing here" sentinel re-creates the bug it was written to fix.** #1258 then made the *classifier* workspace-aware, which is the layer that actually has a root: `build_scope_from_capture(where, workspace=..., on_warning=...)`. An absolute path inside the workspace is relativized into `files`; one that cannot equal a repo-relative path (`C:/…`, `~/…`, `file://…`, a leading `\`, or anything absolute with a space or `+` that the route regex rejects) goes to `tags`, which is uncomparable and therefore **fails closed**, with a warning naming it. It is deliberately **not** rejected: `/login` is a legitimate route that is also "outside the workspace", so refusing those would break route capture.
+The cross-family review of the same change found the matching fail-*open*: `build_scope_from_capture` stores a `--where` string verbatim, so a requirement captured as `./x.py` never matched anything and dropped out of every scoped run. Workspace-global scope hid it (the gate blocked regardless); scoping the CLI made it a silent merge. `scope._files_intersect` now normalizes both sides through `posixpath.normpath`, which fixes the gate and `run_proof` at once. A second review pass found the same fail-open in another spelling: the first fix collapsed root-equivalent paths (`./`, `src/..`) to `""` and *skipped* them, so a requirement scoped to the repo root matched nothing at all. `_normalize` now returns `"."` for the root and `_files_intersect` treats it as covering every file. **A normalizer that maps a meaningful value onto its own "nothing here" sentinel re-creates the bug it was written to fix.** #1258 then made the *classifier* workspace-aware, which is the layer that actually has a root: `build_scope_from_capture(where, workspace=..., on_warning=...)`. An absolute path inside the workspace is relativized into `files`; one that cannot equal a repo-relative path (`C:/…`, `~/…`, `file://…`, a leading `\`, or anything absolute with a space or `+` that the route regex rejects) goes to `tags`, which is uncomparable and therefore **fails closed**, with a warning naming it. It is deliberately **not** rejected: `/login` is a legitimate route that is also "outside the workspace", so refusing those would break route capture.
 
 Two traps that change live in that function. **An inside-workspace path only beats route classification when it has a file extension or exists on disk** — a repo at `/app` (an ordinary container layout) makes `/app/settings` syntactically inside the workspace, and treating it as a file turned a route that matched everything into a file scope matching nothing. And **the route regex `^/[\w/\-.*]+$` runs before the file branches and admits dots**, so a plain POSIX absolute path was always classified as a *route* — it matched everything via #922, which is why this bug read as harmless for so long. #1258 was filed claiming the opposite; verify a scope claim by running `build_scope_from_capture`, not by reading the branch order.
 
@@ -74,9 +60,7 @@ A third trap, found over three review rounds: **a captured path that passes thro
 
 **`ProofRun.vacuous_pass`** distinguishes a pass from a pass that verified nothing, computed as *passed with an empty tally* rather than by reading the config — so it also catches an `enabled_gates` list that excludes every obligation, and an all-UNVERIFIABLE run. A warn-mode run that masked a real failure is **not** vacuous (its gates ran), and a workspace with no requirements is not either (an empty ledger makes no false claim). The merge gate is deliberately **not** coupled to it: a vacuous run leaves requirements OPEN, so the gate already blocks them via requirement status. The ledger column is added by lazy `ALTER TABLE` mirroring #728 — and it **borrows the connection `_ensure_tables` already holds**, because `tests/core/test_tui_dashboard.py` pins a cold dashboard load at 3 connections and the TUI refreshes every 2s.
 
-**`cf proof ratchet` (#1467)** fills an empty ledger from the tests that already pass. It runs the project's pytest suite **once** (sandboxed via `build_agent_env`, JUnit `junit_family=xunit1` so each case carries its file, `--cov=. --cov-context=test` when pytest-cov is present) and creates one OPEN requirement per passing test: `source=ratchet`, one `UNIT` obligation, one `must_pass` rule naming the test **by function name**, because that is how the runner enforces a rule (#1401). A name is locked only when `gates.cases_verdict` — the runner's own verdict, shared — passes across **every** case of that name in the suite, so `--path` filters which names are locked *after* a full run rather than narrowing what pytest runs (narrowing locked a name that also fails elsewhere, and let a `../` glob reach another repo). Scope is the files each test's coverage context touched, read straight from coverage's SQLite data with paths joined to the repo (`relative_files = True` stores them relative); no per-test data → `["."]` plus a warning, never a guess. Reruns dedupe on test name across every ratchet requirement; `Source.RATCHET` is reserved (capture raises, the API 422s). Exit 2 = nothing to lock, 1 = suite could not run — never a "locked in 0" success, and no `.codeframe/` is created unless something is locked. Once satisfied, a locked test is re-checked by a plain `cf proof run` whenever the diff touches its scope (#1484: a scoped run loads SATISFIED alongside OPEN when there is a diff and filters both through `intersects`; a clean tree re-checks nothing satisfied, and a failed scope detection re-checks everything), and always by `--full`. Its tests live in `tests/core/`, not `tests/cli/`: they spawn real pytest in fixture repos, which the Unlocked Resolution job's throwaway env cannot reach.
-
-**The frontend no longer predicts the gate.** `canMerge` retains `!!proofData` (meaning "the panel has loaded") but dropped the open-requirement count: the panel reads the workspace-global `/proof/status` while the server scopes to the PR's files, so predicting blocked out-of-scope PRs and steered users into recording an override for a bypass that never happened — a false entry in the audit trail the override exists to create. The panel attempts the merge and renders the server's refusal. The 409 carries `blocking_requirements` as data, **untruncated** (the prose summary caps at 10), because the client cannot re-derive that set: the gate also blocks SATISFIED requirements whose evidence fails verification (#952), which never appear in `/proof/status`. A 409 is treated as the gate **only when it carries a non-empty `blocking_requirements`** — GitHub returns 409 for its own conflicts and `_github_error_http` propagates upstream statuses verbatim. **Admin-only actions are gated up front (#1255).** `GET /auth/me` returns the scopes `require_auth` resolved plus `is_admin` (computed server-side with `has_scope`; the auth-off operator is admin), and `useAdminDenied()` disables-and-explains Merge (the only way into the override dialog), Create PR, GitHub-token Save/Remove and GitHub Connect/Disconnect. LLM-key Save/Remove is **not** admin-gated since #1303: a user manages the LLM keys in their own per-user store (write scope), and a non-admin's credential manager never runs the machine-wide→per-user migration, which would copy the operator's keys into the tenant's store. The one shared `get_credential_manager` lives in `ui/dependencies.py`; the GitHub router's private copy migrated before its admin check. It is true **only** on an explicit `is_admin: false` — loading or a failed probe leaves controls enabled, and the server's 403 stays the backstop. Never hide an admin action: a hidden button is indistinguishable from a missing feature. A new admin-guarded UI action should call the same hook.
+**`cf proof ratchet` (#1467)** fills an empty ledger from the tests that already pass. It runs the project's pytest suite **once** (sandboxed via `build_agent_env`, JUnit `junit_family=xunit1` so each case carries its file, `--cov=. --cov-context=test` when pytest-cov is present) and creates one OPEN requirement per passing test: `source=ratchet`, one `UNIT` obligation, one `must_pass` rule naming the test **by function name**, because that is how the runner enforces a rule (#1401). A name is locked only when `gates.cases_verdict` — the runner's own verdict, shared — passes across **every** case of that name in the suite, so `--path` filters which names are locked *after* a full run rather than narrowing what pytest runs (narrowing locked a name that also fails elsewhere, and let a `../` glob reach another repo). Scope is the files each test's coverage context touched, read straight from coverage's SQLite data with paths joined to the repo (`relative_files = True` stores them relative); no per-test data → `["."]` plus a warning, never a guess. Reruns dedupe on test name across every ratchet requirement; `Source.RATCHET` is reserved (capture raises). Exit 2 = nothing to lock, 1 = suite could not run — never a "locked in 0" success, and no `.codeframe/` is created unless something is locked. Once satisfied, a locked test is re-checked by a plain `cf proof run` whenever the diff touches its scope (#1484: a scoped run loads SATISFIED alongside OPEN when there is a diff and filters both through `intersects`; a clean tree re-checks nothing satisfied, and a failed scope detection re-checks everything), and always by `--full`. Its tests live in `tests/core/`, not `tests/cli/`: they spawn real pytest in fixture repos, which the Unlocked Resolution job's throwaway env cannot reach.
 
 Phase 4A is ✅ Complete in the roadmap's Summary table, which is the single status authority (#1246).
 
@@ -95,7 +79,7 @@ See `docs/PRODUCT_ROADMAP.md` for full specs and issue links.
 Core is allowed to: read/write durable state (SQLite/filesystem), run orchestration/worker loops, emit events to an append-only event log, call adapters via interfaces (LLM, git, fs).
 
 ### 2) CLI must not require a server
-Golden Path commands must work from the CLI with **no server running**. FastAPI is optional, started explicitly via `codeframe serve`, and must wrap core.
+Golden Path commands work from the CLI alone. There is no server (removed in #1477); do not add one to support a CLI command.
 
 ### 3) Agent state transitions flow through runtime
 - Agent (`agent.py`) manages its own `AgentState` (IDLE, PLANNING, EXECUTING, BLOCKED, COMPLETED, FAILED)
@@ -112,20 +96,13 @@ At all times: `codeframe --help` works, Golden Path stubs can run, no breaking r
 ## Current State
 
 ### v2 Architecture
-- **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
-- **CLI-first**: Golden Path works **without any running FastAPI server**
+- **Core-first**: Domain logic lives in `codeframe/core/` (headless)
+- **CLI-first**: the Golden Path is the `cf` CLI; `cf dashboard` is a Textual TUI over the same core
 - **Adapters**: LLM providers in `codeframe/adapters/llm/`
-- **Server/UI optional**: FastAPI and UI are thin adapters over core; web UI connects via REST/WebSocket
-
-### Phase 3 Web UI (actively developed — not legacy)
-Next.js 16 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE.
-
-Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blockers`, `/proof`, `/proof/[req_id]`, `/review`, `/sessions`, `/sessions/[id]`, `/settings`.
-
-Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
+- **proof9 plugin**: `proof9/` is a Claude Code plugin that drives `cf proof … --json` by argv
 
 ### What's implemented
-Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history). E2B cloud execution exists but is EXPERIMENTAL and gated — see `CODEFRAME_ENABLE_CLOUD_ENGINE` below.
+Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, run output streaming (`cf work follow`), multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, PROOF9 quality system (gate runs, per-gate evidence, run history, `cf proof ratchet`, `cf proof export`), the proof9 Claude Code plugin, and the `cf dashboard` TUI. E2B cloud execution exists but is EXPERIMENTAL and gated — see `CODEFRAME_ENABLE_CLOUD_ENGINE` below.
 
 ---
 
@@ -150,22 +127,20 @@ codeframe/
 │   ├── llm/base.py, llm/anthropic.py, llm/openai.py, llm/mock.py
 │   └── e2b/        # Cloud sandbox (optional: pip install codeframe[cloud])
 ├── cli/app.py      # Typer CLI entry + subcommands
-├── ui/             # FastAPI server (thin adapter over core)
-│   ├── server.py, models.py, dependencies.py
-│   └── routers/    # 23 router modules (21 v2 REST + 2 WebSocket)
-├── auth/           # API key service + auth dependencies
-├── lib/            # rate_limiter.py, audit_logger.py, metrics_tracker.py
-└── platform_store/ # Control-plane store: auth, api keys, audit logs,
-                    # interactive sessions, token usage (slim Database + repos)
+├── tui/            # `cf dashboard` (Textual)
+├── notifications/  # Outbound webhook (WebhookNotificationService)
+├── lib/            # metrics_tracker.py
+└── platform_store/ # Per-workspace TokenRepository (token usage)
 
-web-ui/             # Phase 3 Web UI (Next.js, actively developed)
+proof9/             # Claude Code plugin: /proof capture + ratchet via cf proof --json
 tests/
 ├── core/           # Core module tests (auto-marked v2)
 ├── adapters/       # LLM + E2B adapter tests
 ├── agents/         # dependency_resolver tests
 ├── integration/    # Cross-module integration tests
-├── lifecycle/      # End-to-end lifecycle tests (CLI + API + web, uses MockProvider)
-└── ui/             # FastAPI router tests
+├── cli/            # Typer command tests
+├── ci/             # Workflow + doc guards
+└── lifecycle/      # End-to-end CLI lifecycle test (real LLM)
 ```
 
 ---
@@ -179,13 +154,8 @@ uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every
                                          # ~6.5 min locally. If it is much slower on your
                                          # machine, see "Suite speed" below.
 uv run pytest tests/core/                # Core module tests
-scripts/lifecycle --mode cli|api|web|all # Lifecycle tests (run locally before a PR)
-                                         # cli — real LLM calls, needs a key, costs money
-                                         # api — Golden Path over HTTP on the mock provider,
-                                         #       free, and also runs in normal CI (#1068)
-                                         # web — Golden Path through the browser (Playwright),
-                                         #       free; runs in the e2e-browser-smoke CI job
-                                         # all — every one of them
+scripts/lifecycle --mode cli             # Lifecycle test (run locally before a PR)
+                                         # real LLM calls, needs a key, costs money
 uv run ruff check .
 
 scripts/quickstart-cleanroom/run.sh      # Cold-start check — RUN BEFORE EVERY RELEASE
@@ -193,10 +163,6 @@ scripts/quickstart-cleanroom/run.sh      # Cold-start check — RUN BEFORE EVERY
                                          # container and follows the README. Needs a
                                          # real key and ~10 min. Add `--source <dir>`
                                          # to check an unreleased fix instead.
-
-# Web UI
-cd web-ui && npm test
-cd web-ui && npm run build
 ```
 
 #### The cold-start check is not optional (#1112, #1168)
@@ -326,14 +292,11 @@ cf pr create|list|get|status|merge|close
 cf config telemetry on|off|status
 ```
 
-Note: `codeframe serve` exists but Golden Path does not depend on it.
-
 ---
 
 ## What NOT to do
 
-- Don't add HTTP endpoints to support CLI commands (CLI must work without a server)
-- Don't require `codeframe serve` for CLI workflows
+- Don't add a server, HTTP endpoints or a web UI back to support a CLI workflow (removed in #1477)
 - Don't implement UI concepts (tabs, panels, progress bars) inside `codeframe/core/`
 - Don't "clean up the repo" as a goal — only refactor to enable the pipeline
 - Don't update task status from `agent.py` — let `runtime.py` handle transitions
@@ -346,7 +309,6 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   LLM call must pass `require_active=True` — `/reset` can land during that call,
   and an unconditional write resurrects the session the user just abandoned.
   `submit_answer` and `pause_discovery` learned this the hard way.
-- Don't skip web UI testing when verifying features that have a web surface
 - **Don't render user text through Rich without escaping it**, and don't write
   a new `except Exception as e: console.print(f"...{e}")` — use
   `codeframe.cli.helpers.print_error`, which escapes once (#1054). An exception
@@ -362,70 +324,16 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   parameters are user input by definition, and any `console.print` / `.write` /
   `.add_row` in that command that interpolates one without `escape()` fails CI.
   Wrap the argument (`escape(str(x))` if it is Optional); do not add to `ALLOWED`.
-- **Don't run `npm audit fix` in `web-ui` to clear a red audit gate** — a job that
-  rewrites the tree it is checking produces a differently broken build. Plain
-  `npm install` is fine **unless you are on npm 11.6.x**, which is the whole of
-  #1194: that npm's `npm install` drops the peer-installed optional
-  `@emnapi/core` and `@emnapi/runtime` entries from `package-lock.json`, and
-  `npm ci` then correctly demands them back with an `@emnapi` error that names
-  nothing you touched. The committed lockfile is **not** corrupt — it matches the
-  registry, and npm 10.8.2, 11.0.0, 11.4.0, 11.5.0, 11.7.0, 11.9.0, 11.10.0 and
-  11.19.0 all round-trip it cleanly. So the fix is `npm i -g npm@latest`, not
-  hand-pruning the lock. `web-ui/package.json` declares the range in `engines`,
-  which makes npm print `EBADENGINE` naming the version; it is deliberately not
-  enforced with `engine-strict`, because that validates every dependency's
-  engines — `@testing-library/jest-dom` requiring node >=22 broke `npm ci` that
-  way while CI and the image ran Node 20, and the next dependency to raise its
-  floor would do it again.
-  **Node 24 everywhere (#1301).** The three `web-ui/Dockerfile` stages, every
-  workflow's `NODE_VERSION` and `engines.node` name one major; Node 20 went EOL
-  2026-04-30 and missed two security releases on the internet-facing image
-  while `npm audit` (which checks packages, not the runtime) stayed green.
-  `tests/ci/test_web_ui_lockfile_guard_1194.py` fails if they drift or name an
-  EOL major. 24 over 22 because `node:24-alpine` bundles npm 11.19. Beware a
-  local Node 24.8–24.13: those bundle npm 11.6.x, the one bad npm above —
-  the `engines.npm` `EBADENGINE` warning is what tells you.
-  **Regenerate the lock with npm >= 11.19** (#1223): that is what generated it,
-  and it is a fixed point only there. Every other supported npm — Node 22's
-  bundled 10.9 included — rewrites 108 lines on any install: the 36 `libc` fields
-  (`["glibc"]`/`["musl"]`) that 11.19 records on platform-specific optional
-  packages such as `@img/sharp-libvips-*`. Nothing is added, removed or
-  re-versioned and `npm ci` passes either way, so if you see exactly that diff
-  after touching nothing, it is your npm, not the lock; do not commit it.
-  `web-ui/Dockerfile` runs `npm audit --audit-level=high` during the image build,
-  which means an advisory published upstream — no commit of ours — fails
-  `Build images (staging)` and takes staging *and* production down together
-  (#1210 cost a day of that). The daily `Web UI Audit` workflow (#1213) exists to
-  surface it first, and a red *scheduled* run of it — or of the nightly full
-  sweep in `test.yml` — opens or updates one issue per workflow via the shared
-  `scheduled-failure-issue.yml` (#1239), because a scheduled run has no PR to be
-  red on and went unseen for 40 nights that way (#1236). The in-image gate stays
-  as the backstop and must not be weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
-  failed" — and `npm ci` exit 0 is the oracle either way.
-  Since #1217 a patch-level Dependabot **security** PR to `web-ui` arms
-  `gh pr merge --auto` by itself (`dependabot-automerge.yml`), but only after
-  `scripts/ci/lock_diff_is_surgical.py` confirms the lock diff adds and removes
-  nothing, gains no install script, and stays on `registry.npmjs.org` with
-  integrity hashes; routine bumps and minor/major updates still wait for a human.
-  **The gate only fires because `deploy.yml` excludes the `deps` stage from the
-  layer cache** (`no-cache-filters: deps`, #1216). A layer's cache key is its
-  parent layers plus the command string, and an upstream advisory changes
-  neither — so without that exclusion an unchanged lockfile makes `npm audit` a
-  cache hit and the deploy ships the advisory silently, the exact inverse of
-  #1210. Don't delete it to save the ~23s it costs; both it and the daily
-  check's cachelessness are pinned by
-  `tests/ci/test_deploy_audit_cache_1216.py`.
-- **Don't leave a CI gate disabled when its feature area becomes active.** Re-enable `DISABLED:` / `# COMMENTED OUT:` jobs before the first PR in that area. Verify `frontend-tests` is wired into `test-summary`.
+- **Don't leave a CI gate disabled when its feature area becomes active.** Re-enable `DISABLED:` / `# COMMENTED OUT:` jobs before the first PR in that area.
 - **A CI run that fails with ZERO jobs and no logs means the workflow file will not compile** (#1122). `gh run view --log-failed` returns `log not found`, the jobs API is empty, and the run ignores its own trigger filters — so it looks like an unrelated trigger bug rather than an outage. YAML validity is not enough: `yaml.safe_load()` parses these files fine; it is GitHub's expression pass that rejects them. Run `actionlint .github/workflows/*.yml` first — the `workflow-lint` job in `test.yml` now enforces this on every PR, but it is the first thing to run locally when a workflow misbehaves. This shipped twice undetected: `deploy.yml` (staging down for a week, an empty `${{ }}` inside a `run:` block) and `claude-review` (#1011).
 
 ---
 
 ## Testing / Demoing
 
-### Quality check (covers both backend and web UI)
+### Quality check
 ```bash
 uv run pytest && uv run ruff check .
-cd web-ui && npm test && npm run build
 ```
 
 New v2 tests: add `@pytest.mark.v2` or `pytestmark = pytest.mark.v2` at module level.
@@ -455,34 +363,12 @@ When unsure: simpler state, fewer dependencies, smaller surface area, core-first
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default), unless
-                                      # stored via `cf auth setup` / Settings → API Keys.
+                                      # stored via `cf auth setup`.
                                       # One resolver (#1264): llm_resolution.resolve_api_key —
-                                      # env → the principal's store → machine-wide store; a
-                                      # hosted tenant gets only its own stored key. Build
-                                      # providers with create_provider(settings, user_id=...),
-                                      # passing the server principal, never get_provider bare.
+                                      # env → stored credential. Build providers with
+                                      # create_provider(settings), never get_provider bare.
 E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
-
-# Server deployment + workspace allowlist (#655, #896)
-CODEFRAME_DEPLOYMENT_MODE=self_hosted # self_hosted (default) or hosted (multi-tenant)
-WORKSPACE_ROOT=/srv/workspaces        # os.pathsep-separated allowlist of permitted
-                                      # workspace roots. Any client-supplied workspace
-                                      # path (REST, workspace init, session create) must
-                                      # resolve inside a root, else 403. Parsed ONLY by
-                                      # ui/dependencies._allowed_workspace_roots — it is
-                                      # an allowlist, never a location, and nothing
-                                      # mkdirs it (#896). REQUIRED whenever auth is
-                                      # enforced: the server refuses to start without it,
-                                      # because an empty allowlist lets any authenticated
-                                      # user open a session — and a terminal shell — in
-                                      # any host directory. In hosted mode each user is
-                                      # additionally confined to <root>/<user_id>.
-CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1  # Escape hatch for the above: start with no
-                                      # allowlist (loud WARNING) on a single-operator
-                                      # LOCAL machine. Never honored in hosted mode,
-                                      # never set on an exposed server. Mirrors
-                                      # CODEFRAME_ALLOW_INSECURE_SECRET (#643).
 
 # Repo-committed hook trust (#905) — default OFF (refuse)
 CODEFRAME_ALLOW_HOOKS=1               # Run a workspace's configured lifecycle
@@ -499,36 +385,6 @@ CODEFRAME_ALLOW_HOOKS=1               # Run a workspace's configured lifecycle
                                       # one run. CODEFRAME.md can no longer
                                       # supply hooks at all: it is found by
                                       # walking UP from the workspace.
-
-# Bootstrap registration gate (#897)
-CODEFRAME_BOOTSTRAP_TOKEN=<secret>    # Out-of-band secret gating the
-                                      # unauthenticated POST /auth/register
-                                      # bootstrap route. When set, the caller
-                                      # must send it as the X-Bootstrap-Token
-                                      # header — loopback does NOT bypass it.
-                                      # When unset, only host-local requests may
-                                      # register: loopback peer and NO proxy
-                                      # header at all — any X-Forwarded-*,
-                                      # X-Real-IP or Forwarded, even empty
-                                      # (#1274: Next's rewrite forwards a LAN
-                                      # request with only X-Forwarded-Host and
-                                      # keeps a client-sent XFF, so a proxy on
-                                      # this host proves nothing). The web UI
-                                      # sign-up therefore always needs the
-                                      # token; `cf auth register` on the host
-                                      # is the tokenless path (the gate does
-                                      # not rely on RATE_LIMIT_TRUSTED_PROXIES
-                                      # — behind the Caddy
-                                      # deploy every public request has a
-                                      # loopback peer). REQUIRED for any deploy
-                                      # reachable over a network; without it a
-                                      # fresh instance is claimable as admin by
-                                      # whoever reaches /auth/register first.
-                                      # The #336 close-after-first-user gate
-                                      # still applies on top. See
-                                      # deploy/README.md → "Creating the first
-                                      # account"; `cf auth register
-                                      # --bootstrap-token` sends the header.
 
 # Experimental cloud engine (#966) — default OFF (refuse)
 CODEFRAME_ENABLE_CLOUD_ENGINE=1       # Unlock `--engine cloud` (the E2B adapter).
@@ -625,41 +481,6 @@ CODEFRAME_ALLOW_CONFIG_BASE_URL=1    # Allow a `.codeframe/config.yaml`
                                       # OPENAI_API_KEY to ollama/vllm/compatible
                                       # too when it is set.
 
-# Per-user daily spend limit (#1303) — default OFF
-CODEFRAME_USER_DAILY_COST_LIMIT_USD=5 # Cap on what each server principal's runs
-                                      # spend per UTC day. Task start/resume,
-                                      # execute, approve+start and batch resume
-                                      # return 429 SPEND_LIMIT_EXCEEDED before
-                                      # writing state; a batch re-checks before
-                                      # each task. Spend = today's token_usage in
-                                      # every workspace the user started work in
-                                      # (workspace_spend_users) or owns. What is
-                                      # left clamps max_cost_usd (offset by the
-                                      # task's prior spend, so a resume is not
-                                      # refused), each run holds its slice while
-                                      # in flight (core/spend_limit.py, per
-                                      # process), an unreadable spend DB refuses,
-                                      # and a delegated engine cannot run under
-                                      # it (unmetered). Auth-off/CLI is exempt.
-                                      # The source is each workspace's own DB, so
-                                      # it guards against runaway cost, not a
-                                      # tenant who edits it. Add users after the
-                                      # first with `cf auth user-create`.
-
-# Optional — Rate limiting
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_DEFAULT=100/minute
-RATE_LIMIT_AUTH=10/minute
-RATE_LIMIT_AI=20/minute
-RATE_LIMIT_STORAGE=memory             # memory (default) or redis
-REDIS_URL=redis://localhost:6379
-# Multi-worker deployments (uvicorn/gunicorn with --workers > 1): set
-# RATE_LIMIT_STORAGE=redis (+ REDIS_URL, + the codeframe-ai[redis] extra; the
-# server refuses to start without it, #1289) for shared, cross-worker counters.
-# With the default in-memory storage each worker keeps its OWN counters, so the
-# effective limit — including auth brute-force protection — multiplies by the
-# worker count. The server logs a WARNING at startup when this is detected.
-
 # Credential-file confidentiality (#772 — opt-in)
 CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the
                                       # encrypted-file credential fallback
@@ -672,11 +493,6 @@ CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the
                                       # adding/changing this rekeys the store, so
                                       # previously stored credentials become
                                       # undecryptable and must be re-entered.
-                                      # REQUIRED by the container deploy (#1265):
-                                      # compose refuses to start without it, and
-                                      # the image pins /etc/machine-id and puts
-                                      # HOME on the data volume so the store
-                                      # survives a recreate. Never rotate it.
 
 # Unresponsive keyring backends (#1181)
 CODEFRAME_DISABLE_KEYRING=1           # Skip the OS keyring entirely and use the
@@ -688,9 +504,8 @@ CODEFRAME_DISABLE_KEYRING=1           # Skip the OS keyring entirely and use the
                                       # blocks. Detection by exception therefore
                                       # never fired, so the fallback never
                                       # engaged and every credential read hung
-                                      # forever: the test suite wedged, and
-                                      # GET /api/v2/settings/keys hung a request
-                                      # thread. Every keyring call is now
+                                      # forever and the test suite wedged.
+                                      # Every keyring call is now
                                       # time-boxed and a timeout is treated
                                       # exactly like KeyringError; the verdict
                                       # is sticky per process, so the timeout is
@@ -705,38 +520,12 @@ CODEFRAME_KEYRING_TIMEOUT=2.0         # Seconds allowed per keyring call before
                                       # `PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring`
                                       # remains the keyring-native equivalent.
 
-# Session token lifetime (#657 — defense-in-depth)
-JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d).
-                                      # Shorter window limits exposure of the
-                                      # localStorage-stored web-UI token. No
-                                      # refresh token, so users re-login after
-                                      # expiry. The web UI also ships a CSP
-                                      # (web-ui/security-headers.js) to contain
-                                      # XSS-based token exfiltration.
-                                      # Read when the JWT strategy is BUILT, not
-                                      # at import (#963) — it used to be a
-                                      # module-level int(os.getenv(...)) that
-                                      # ran before .env loaded, so setting this
-                                      # the documented way silently kept the
-                                      # default. KNOWN LIMITATION: logout does
-                                      # not revoke. POST /auth/jwt/logout only
-                                      # tells the client to drop its copy;
-                                      # verification is stateless signature
-                                      # checking with no server-side denylist
-                                      # (there is no session store at all — the
-                                      # vestigial `sessions` table was dropped
-                                      # in #968), so a leaked token stays valid
-                                      # for up to this
-                                      # lifetime. This value IS the mitigation —
-                                      # lower it if tokens may leak.
-
 # Outbound webhook SSRF guard (#656, #746) — default OFF (block)
 CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to
                                       # private/loopback/link-local/metadata/CGNAT
                                       # IPs. Off by default: such hosts are
-                                      # rejected at save time (notifications save
-                                      # + test endpoints) AND at dispatch time
-                                      # (#746): send_event resolves-and-checks
+                                      # rejected at dispatch time (#746):
+                                      # send_event resolves-and-checks
                                       # the host and pins the vetted IPs into the
                                       # connector (defeats hand-edited config and
                                       # DNS rebinding; e.g. 169.254.169.254 IMDS).
@@ -756,17 +545,13 @@ DO_NOT_TRACK=1                        # Standard convention; disables telemetry 
 | Doc | Purpose |
 |-----|---------|
 | `docs/VISION.md` | North star: Think → Build → Prove → Ship thesis |
-| `docs/PRODUCT_ROADMAP.md` | **Current roadmap** — Phase 3.5/4/5 web product completeness |
+| `docs/PRODUCT_ROADMAP.md` | **Current roadmap** — phase status (Summary table is the authority) |
 | `docs/GOLDEN_PATH.md` | CLI-first workflow contract |
 | `docs/CLI_WIREFRAME.md` | Command → module mapping |
 | `docs/AGENT_SYSTEM_REFERENCE.md` | Component table, model selection, execution flows, self-correction |
 | `docs/REACT_AGENT_ARCHITECTURE.md` | ReAct deep-dive: tools, editor, token management |
-| `docs/PHASE_3_UI_ARCHITECTURE.md` | Web UI architecture (Next.js, pages, components) |
-| `docs/PHASE_2_DEVELOPER_GUIDE.md` | Server layer + v2 router patterns |
-| `docs/PHASE_2_CLI_API_MAPPING.md` | CLI to API endpoint mapping |
 | `docs/QUICKSTART.md` | User-facing quickstart guide |
 | `docs/CLI_GUIDE.md` | CLI walkthrough + full command reference |
-| `docs/WEB_UI_GUIDE.md` | Web UI tour, page by page with screenshots |
 
-v1 history (sprint plans, specs, legacy docs) and archived v2 plans were removed
-from the tree; they remain in git history.
+v1 history (sprint plans, specs, legacy docs), archived v2 plans, and the web UI /
+server docs removed in #1477 remain in git history.

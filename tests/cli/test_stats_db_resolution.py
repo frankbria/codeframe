@@ -16,7 +16,9 @@ from typer.testing import CliRunner
 from codeframe.cli.stats_commands import stats_app
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.core.workspace import create_or_load_workspace
-from codeframe.platform_store.database import Database
+import sqlite3
+
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 
 pytestmark = pytest.mark.v2
 
@@ -24,8 +26,7 @@ pytestmark = pytest.mark.v2
 def _make_workspace_with_row(repo: Path) -> Path:
     """Create a workspace at ``repo`` with one token_usage row; return db path."""
     ws = create_or_load_workspace(repo)
-    db = Database(str(ws.db_path))
-    db.initialize()
+    db = TokenRepository(sync_conn=sqlite3.connect(str(ws.db_path)))
     try:
         db.save_token_usage(
             TokenUsage(
@@ -41,7 +42,7 @@ def _make_workspace_with_row(repo: Path) -> Path:
             )
         )
     finally:
-        db.close()
+        db.conn.close()
     return ws.db_path
 
 

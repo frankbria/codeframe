@@ -75,21 +75,3 @@ def test_a_streaming_error_is_mapped_like_complete(build, status, error):
     assert "Error code:" not in str(err.value), str(err.value)  # not the raw SDK string
 
 
-def test_the_chat_error_event_carries_the_readable_text(monkeypatch, tmp_path):
-    """What the browser gets: the mapped message, not the SDK's dict."""
-    from codeframe.ui.routers import session_chat_ws as mod
-
-    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: _anthropic(413))
-    monkeypatch.setattr(mod.StreamingChatAdapter, "_load_history", lambda self: [])
-
-    queue: asyncio.Queue = asyncio.Queue()
-    asyncio.run(mod._run_streaming_adapter("s1", "Hi", queue, asyncio.Event(), None, tmp_path))
-    errors = []
-    while not queue.empty():
-        e = queue.get_nowait()
-        if e.get("type") == "error":
-            errors.append(e)
-    assert errors, "no error event"
-    message = errors[0]["message"]
-    assert "HTTP 413" in message and REASON in message, message
-    assert "Error code:" not in message, message

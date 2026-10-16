@@ -10,7 +10,6 @@
 
 ```bash
 uv run pytest && uv run ruff check . && uv run mypy codeframe/
-cd web-ui && npm test && npm run build
 ```
 
 That is the same gate [CI](.github/workflows/test.yml) runs. If it passes locally it should pass on a PR.
@@ -33,13 +32,11 @@ A `-m` on the command line **replaces** that one rather than combining with it �
 | Directory | What lives there |
 |---|---|
 | `tests/core/` | Headless domain + orchestration (`tasks`, `conductor`, `prd`, `proof`, `git`, …) |
-| `tests/ui/` | FastAPI router tests, via `TestClient` over a fresh app |
-| `tests/cli/` | Typer commands, via `CliRunner` — in-process, no server |
+| `tests/cli/` | Typer commands, via `CliRunner` — in-process |
 | `tests/adapters/` | LLM providers and the E2B sandbox |
-| `tests/unit/` | Narrow units that fit none of the above (e.g. the GitHub client) |
 | `tests/integration/` | Cross-module flows |
 | `tests/agents/` | Dependency resolution |
-| `tests/e2e/` | CLI end-to-end (`tests/e2e/cli`) and Playwright browser (`tests/e2e/*.spec.ts`) |
+| `tests/e2e/` | CLI end-to-end (`tests/e2e/cli`) |
 | `tests/lifecycle/` | Full Think → Build → Prove loop against a real LLM |
 
 ## Markers
@@ -77,43 +74,15 @@ scripts/lifecycle --mode cli            # ~$0.50–1.00 with the default haiku m
 scripts/lifecycle --mode cli --dry-run  # show what would run, spend nothing
 ```
 
-`--mode api` and `--mode web` **exit 3**: they are not implemented (#1068). They used
-to collect only skipped stubs and exit 0, which read as a pass.
-
-## Browser E2E
-
-[`tests/e2e/playwright.config.ts`](tests/e2e/playwright.config.ts) starts both servers itself (`uv uvicorn` for the
-backend, `next build && next start` for the frontend) and `global-setup.ts` seeds a
-workspace and a login user. You do not start anything by hand.
-
-```bash
-cd tests/e2e && npx playwright test
-```
-
-## Web UI
-
-```bash
-cd web-ui
-npm test              # Jest
-npm run lint          # eslint --max-warnings 0
-npm run build         # must succeed; the frontend-tests CI job enforces it
-```
-
 ## Writing tests
 
 - **No mocking at integration boundaries.** Use a real SQLite workspace, a real git
   repository, the real core modules. Substitute only what would spend money, spawn an
   agent, or reach the network — and say so in a comment.
-- **Assert outcomes, not status codes.** A `201` from the commit endpoint means little;
+- **Assert outcomes, not exit codes.** A `0` from `cf commit create` means little;
   reading the commit back out of `git log` means something.
-- **Give a destructive path a negative case too.** "Returns 400" and "did not corrupt
+- **Give a destructive path a negative case too.** "Exits 1" and "did not corrupt
   anything" are different claims.
-- **A new `/api/v2` router is protected by how it is mounted**, and by nothing else.
-  [`tests/ui/test_v2_auth_enforcement.py`](tests/ui/test_v2_auth_enforcement.py) asserts
-  the 401 responses, and a companion suite enumerates `app.routes` so a router mounted
-  without the auth dependency fails rather than shipping.
-- Tests run with `CODEFRAME_AUTH_REQUIRED=false` (set in [`tests/conftest.py`](tests/conftest.py)); opt back
-  in explicitly when auth is what you are testing.
 
 ## Demoing against a sample project
 

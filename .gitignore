@@ -86,21 +86,11 @@ Thumbs.db
 .codeframe/
 .agent-tasks/
 # Local planning scratch (issue-lifecycle todo.md, migration notes) — not source.
-# Anchored to repo root so it does NOT also ignore nested source dirs such as
-# web-ui/src/components/tasks/.
+# Anchored to repo root so it does NOT also ignore nested source dirs.
 /tasks/
 
-# Playwright Test Artifacts
-tests/e2e/playwright-report/
-tests/e2e/test-results/
-tests/e2e/.auth/
-tests/e2e/.codeframe/
-tests/e2e/.e2e-workspace/
-tests/e2e/.e2e-lifecycle-workspace/
-tests/e2e/.e2e-state.db*
 test_audit_report.md
 tests/integration/.env.integration
-web-ui/test-results/
 .opencode-tmp/
 # #614 cold-start harness: keep the captured text evidence (the demo document
 # re-runs against it), drop the scratch run dir. The run logs are evidence, so

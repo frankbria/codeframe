@@ -2,7 +2,8 @@
 
 The `cf` command is the primary interface to CodeFRAME. Every stage of the
 pipeline (Think, Build, Prove, Ship) runs from the terminal with **no server
-running**; the [web UI](WEB_UI_GUIDE.md) is an optional layer on the same core.
+running**. Inside Claude Code, the [proof9 plugin](../proof9/README.md) drives
+the same proof ledger through `cf proof`.
 
 <p align="center">
   <img src="images/cli-tour.gif" alt="A terminal session: cf init, cf prd add, cf tasks generate producing 18 tasks with dependencies, cf tasks list, cf proof capture, cf proof status" width="820">
@@ -102,9 +103,9 @@ reported as unverified, never as a pass.
 
 ### 5. Ship: open and merge a pull request
 
-`cf pr` talks to GitHub. Connect a repository in the web UI (Settings →
-Integrations), or export `GITHUB_TOKEN` (a PAT with `repo` scope) and
-`GITHUB_REPO=owner/repo`.
+`cf pr` talks to GitHub. Export `GITHUB_TOKEN` (a PAT with `repo` scope) and
+`GITHUB_REPO=owner/repo`, or store the token once with
+`cf auth setup --provider github`.
 
 ```bash
 cf pr create             # PR body ends with the workspace's PROOF9 status

@@ -38,58 +38,6 @@ def workspace(tmp_path):
     return create_or_load_workspace(tmp_path)
 
 
-class TestServeBindsLoopback:
-    def test_serve_host_default_is_loopback(self):
-        from codeframe.cli.app import serve
-
-        default = inspect.signature(serve).parameters["host"].default
-        assert default.default == "127.0.0.1", (
-            f"cf serve binds {default.default} by default"
-        )
-
-    def test_run_server_default_is_loopback(self):
-        from codeframe.ui.server import run_server
-
-        assert inspect.signature(run_server).parameters["host"].default == "127.0.0.1"
-
-    def test_env_example_does_not_suggest_a_public_bind(self):
-        content = (REPO_ROOT / ".env.example").read_text()
-
-        assert "# API_HOST=0.0.0.0" not in content
-
-    def test_exposing_the_bind_warns(self, capsys):
-        from codeframe.cli.app import _warn_if_exposed
-
-        _warn_if_exposed("0.0.0.0")
-
-        assert "WARNING" in capsys.readouterr().out
-
-    def test_loopback_does_not_warn(self, capsys):
-        from codeframe.cli.app import _warn_if_exposed
-
-        _warn_if_exposed("127.0.0.1")
-
-        assert capsys.readouterr().out == ""
-
-    def test_exposed_bind_with_auth_disabled_warns_harder(self, capsys, monkeypatch):
-        """The dangerous combination the issue calls out."""
-        from codeframe.cli.app import _warn_if_exposed
-
-        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
-        _warn_if_exposed("0.0.0.0")
-
-        out = capsys.readouterr().out
-        assert "CODEFRAME_AUTH_REQUIRED" in out
-        assert "no credentials" in out
-
-    @pytest.mark.parametrize("bind", ["0.0.0.0", "::", "*"])
-    def test_every_wildcard_bind_warns(self, capsys, bind):
-        from codeframe.cli.app import _warn_if_exposed
-
-        _warn_if_exposed(bind)
-
-        assert "WARNING" in capsys.readouterr().out
-
 
 class TestCredentialsStayOffArgv:
     def test_stdin_and_file_options_exist(self):

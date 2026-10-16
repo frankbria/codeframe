@@ -6,7 +6,7 @@ They are excluded from normal pytest runs and must be invoked explicitly:
 
     uv run pytest tests/lifecycle/ -m lifecycle
     # or via the convenience script:
-    scripts/lifecycle [--mode cli|api|web|all] [--model haiku|sonnet]
+    scripts/lifecycle [--mode cli] [--model haiku|sonnet]
 """
 
 import os

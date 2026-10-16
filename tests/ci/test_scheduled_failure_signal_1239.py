@@ -27,8 +27,7 @@ WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 SHARED = "scheduled-failure-issue.yml"
 JOB = "report-scheduled-failure"
 CALLERS = {
-    "test.yml": ["test-summary", "e2e-browser-full", "e2e-backend-tests"],
-    "web-ui-audit.yml": ["npm-audit"],
+    "test.yml": ["test-summary", "e2e-backend-tests"],
     "unlocked-resolution.yml": ["unlocked-install"],
     "engine-smoke.yml": ["contract", "task"],  # #1271
 }

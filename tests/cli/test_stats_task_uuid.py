@@ -16,7 +16,9 @@ from typer.testing import CliRunner
 from codeframe.cli.stats_commands import stats_app
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.core.workspace import create_or_load_workspace
-from codeframe.platform_store.database import Database
+import sqlite3
+
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 
 pytestmark = pytest.mark.v2
 
@@ -29,8 +31,7 @@ def workspace_with_row(tmp_path: Path, monkeypatch) -> str:
     repo = tmp_path / "repo"
     repo.mkdir()
     ws = create_or_load_workspace(repo)
-    db = Database(str(ws.db_path))
-    db.initialize()
+    db = TokenRepository(sync_conn=sqlite3.connect(str(ws.db_path)))
     try:
         db.save_token_usage(
             TokenUsage(
@@ -46,7 +47,7 @@ def workspace_with_row(tmp_path: Path, monkeypatch) -> str:
             )
         )
     finally:
-        db.close()
+        db.conn.close()
     # stats_commands._get_db() looks for .codeframe/state.db relative to cwd.
     monkeypatch.chdir(repo)
     return TASK_UUID
@@ -77,8 +78,7 @@ def test_repository_get_task_token_summary_by_uuid(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     ws = create_or_load_workspace(repo)
-    db = Database(str(ws.db_path))
-    db.initialize()
+    db = TokenRepository(sync_conn=sqlite3.connect(str(ws.db_path)))
     try:
         db.save_token_usage(
             TokenUsage(
@@ -95,7 +95,7 @@ def test_repository_get_task_token_summary_by_uuid(tmp_path: Path):
         )
         summary = db.get_task_token_summary(TASK_UUID)
     finally:
-        db.close()
+        db.conn.close()
 
     assert summary["task_id"] == TASK_UUID
     assert summary["total_tokens"] == 1500

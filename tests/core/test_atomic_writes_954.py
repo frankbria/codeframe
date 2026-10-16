@@ -73,12 +73,6 @@ def test_concurrent_writers_do_not_collide(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["shared.json"]
 
 
-def test_helpers_reexport_keeps_existing_router_callers_working():
-    from codeframe.core.atomic_io import atomic_write_json as core_impl
-    from codeframe.ui.routers._helpers import atomic_write_json as router_impl
-
-    assert router_impl is core_impl
-
 
 # --- AC2: a failed decrypt must never overwrite the store -------------------
 

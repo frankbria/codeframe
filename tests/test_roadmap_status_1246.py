@@ -35,7 +35,8 @@ COMPLETE = "✅"
 HEADER_STATUS = re.compile(r"✅|🚧|❌|\bCOMPLETE\b|\bPARTIAL\b|\bNOT STARTED\b|\bIN PROGRESS\b")
 
 #: `| 4A | PR status + PROOF9 merge gate | ✅ Complete ... | #571, #731 |`
-TABLE_ROW = re.compile(r"^\|\s*(\d+(?:\.\d+)?[A-Z]?)\s*\|[^|]*\|\s*(✅|🚧|❌)", re.MULTILINE)
+#: 🗑️ marks a phase whose surface was removed (the web UI phases, #1477).
+TABLE_ROW = re.compile(r"^\|\s*(\d+(?:\.\d+)?[A-Z]?)\s*\|[^|]*\|\s*(✅|🚧|❌|🗑️)", re.MULTILINE)
 
 HEADER = re.compile(r"^#{2,3} (.+)$", re.MULTILINE)
 CHECKBOX = re.compile(r"^\s*- \[([ x])\] (.+)$", re.MULTILINE)
@@ -46,14 +47,7 @@ CLAUDE_FOCUS = re.compile(r"^### Current Focus: Phase (\d+(?:\.\d+)?[A-Z]?)\s*$"
 #: checkbox text. A reworded README line fails the "found it" assertion below
 #: rather than silently dropping out of the check.
 README_PHASE_OF = {
-    "Interactive Agent Sessions": "3.5A",
-    "Run gates from the web UI": "3.5B",
-    "Run gates button": "3.5B",
-    "Glitch capture web UI": "3.5C",
-    "Glitch capture form": "3.5C",
     "Merge gating on PROOF9 pass": "4A",
-    "PR status tracking + CI check display": "4A",
-    "PR status panel with PROOF9-gated merge button": "4A",
     "Post-merge glitch capture loop": "4B",
 }
 

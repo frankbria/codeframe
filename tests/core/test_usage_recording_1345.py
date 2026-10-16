@@ -26,7 +26,6 @@ def ws(tmp_path):
 
 
 def _rows(ws):
-    import sqlite3
 
     conn = sqlite3.connect(str(ws.db_path))
     try:
@@ -133,37 +132,6 @@ def test_no_budget_means_no_ceiling(ws):
 # --- codex pass 2: chat tool loops, and unpriced spend across requests ----
 
 
-async def test_a_chat_turn_stops_calling_the_model_once_its_budget_is_spent(ws, tmp_path):
-    """One user message can make several model calls (tool continuations);
-    the turn's budget is enforced between them. $3 per call, $5 budget."""
-    from unittest.mock import MagicMock
-
-    from codeframe.adapters.llm.base import StreamChunk
-    from codeframe.core.adapters.streaming_chat import ChatEventType, StreamingChatAdapter
-    from codeframe.core.usage_recording import spend_budget
-
-    (tmp_path / "a.py").write_text("x = 1\n")
-    provider = MockProvider()
-    for i in range(3):
-        tool_id, tool_input = f"t{i}", {"path": "a.py"}
-        provider.add_stream_chunks([
-            StreamChunk(type="tool_use_start", tool_id=tool_id, tool_name="read_file", tool_input=tool_input),
-            StreamChunk(type="tool_use_stop"),
-            StreamChunk(type="message_stop", stop_reason="tool_use", input_tokens=1_000_000,
-                        output_tokens=0, tool_inputs_by_id={tool_id: tool_input}),
-        ])
-    repo = MagicMock()
-    repo.get_messages.return_value = []
-    repo.get_recent_messages.return_value = []
-    adapter = StreamingChatAdapter(session_id="s", db_repo=repo, workspace_path=tmp_path,
-                                   model="claude-sonnet-4-5", provider=provider)
-    with spend_budget(5.0):
-        events = [e async for e in adapter.send_message("go", [])]
-
-    assert [e.type for e in events].count(ChatEventType.COST_UPDATE) == 2
-    assert events[-1].type == ChatEventType.ERROR
-    assert "spend limit" in (events[-1].content or "")
-
 
 def test_unpriced_spend_today_refuses_new_work_while_a_limit_is_on(ws, monkeypatch):
     """The unmetered flag lived in one request, so the next one started fresh
@@ -208,120 +176,3 @@ def test_a_budget_is_settled_only_after_its_last_call_records(tmp_path):
     assert settled == [1]  # released once, after the call was recorded
 
 
-def test_a_cancelled_handler_keeps_its_hold_until_the_worker_records(tmp_path, monkeypatch):
-    """Refine/discovery release in a finally; a cancelled handler ran it while
-    its worker thread was still in a billable call (codex P1, pass 6)."""
-    import contextvars
-    import threading
-
-    from codeframe.core.usage_recording import begin_budget
-    from codeframe.ui.dependencies import release_planning_budget
-
-    ws = create_or_load_workspace(tmp_path)
-    entered, go = threading.Event(), threading.Event()
-    released = []
-    monkeypatch.setattr(spend_limit, "release", lambda user, amount: released.append(len(_rows(ws))))
-
-    class Slow:
-        def complete(self, *a, **k):
-            entered.set()
-            go.wait(5)
-            return LLMResponse(content="ok", model="claude-sonnet-4-5", input_tokens=10, output_tokens=10)
-
-    provider = UsageRecordingProvider(Slow(), ws, CallType.PLANNING)
-
-    def handler():
-        begin_budget(5.0)
-        worker = threading.Thread(target=contextvars.copy_context().run, args=(provider.complete,))
-        worker.start()
-        entered.wait(5)
-        release_planning_budget({"user_id": 1}, 5.0)  # the handler's finally
-        return worker
-
-    worker = contextvars.copy_context().run(handler)
-    assert released == []
-    go.set()
-    worker.join(5)
-    assert released == [1]
-
-
-def test_a_settled_budget_admits_no_new_call(tmp_path, monkeypatch):
-    """A cancelled discovery handler's worker went on to its next calls after
-    the hold was returned (codex P1, pass 7)."""
-    import contextvars
-
-    from codeframe.core.spend_limit import SpendLimitExceeded
-    from codeframe.core.usage_recording import begin_budget
-    from codeframe.ui.dependencies import release_planning_budget
-
-    monkeypatch.setattr(spend_limit, "release", lambda *a: None)
-    inner = MockProvider()
-    provider = UsageRecordingProvider(inner, create_or_load_workspace(tmp_path), CallType.PLANNING)
-
-    def handler():
-        begin_budget(5.0)
-        release_planning_budget({"user_id": 1}, 5.0)
-        with pytest.raises(SpendLimitExceeded):
-            provider.complete([{"role": "user", "content": "hi"}])
-
-    contextvars.copy_context().run(handler)
-    assert inner.calls == []
-
-
-def test_spend_that_could_not_be_recorded_keeps_its_hold(tmp_path, monkeypatch):
-    """A failed ledger write was logged and the hold returned, so the next
-    request got the same budget again (codex P1, pass 7). The hold is dated,
-    so it lapses at midnight."""
-    import contextvars
-
-    import codeframe.core.usage_recording as ur
-    from codeframe.ui.dependencies import release_planning_budget
-
-    released = []
-    monkeypatch.setattr(spend_limit, "release", lambda *a: released.append(a))
-    monkeypatch.setattr(ur, "record_llm_usage", lambda *a, **k: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
-    inner = MockProvider()
-    _priced(inner, 1, tokens=10)
-    provider = UsageRecordingProvider(inner, create_or_load_workspace(tmp_path), CallType.PLANNING)
-
-    def handler():
-        ur.begin_budget(5.0)
-        provider.complete([{"role": "user", "content": "hi"}])  # the answer still arrives
-        release_planning_budget({"user_id": 1}, 5.0)
-
-    contextvars.copy_context().run(handler)
-    assert released == []
-
-
-def test_a_chat_turn_stopped_mid_turn_says_why(tmp_path):
-    """A tool continuation that trips the budget went out as a generic error
-    under `content` with no code, and the web UI (which reads `message`)
-    showed 'Unknown error' (claude-review)."""
-    import asyncio
-
-    from codeframe.adapters.llm.base import StreamChunk
-    from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
-    from codeframe.core.usage_recording import spend_budget
-
-    class ToolLooping:
-        def supports(self, _f):
-            return False
-
-        async def async_stream(self, **kw):
-            yield StreamChunk(type="tool_use_start", tool_id="t1", tool_name="list_files", tool_input={"path": "."})
-            yield StreamChunk(type="message_stop", stop_reason="tool_use", input_tokens=1_000_000, output_tokens=0,
-                              tool_inputs_by_id={"t1": {"path": "."}})
-
-    adapter = StreamingChatAdapter(session_id="s", db_repo=None, workspace_path=tmp_path,
-                                   model="claude-sonnet-4-5", provider=ToolLooping())
-    adapter._load_history = lambda: []
-
-    async def turn():
-        with spend_budget(1.0):  # the first call costs $3
-            return [e.to_dict() async for e in adapter.send_message(content="hi", history=[{"role": "user", "content": "x"}])]
-
-    events = asyncio.run(turn())
-    error = events[-1]
-    assert error["type"] == "error", events
-    assert error.get("code") == "SPEND_LIMIT_EXCEEDED", error
-    assert "spend limit" in error.get("message", ""), error

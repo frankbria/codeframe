@@ -52,8 +52,7 @@ CodeFRAME can run a complete end-to-end AI-driven development workflow **from th
    - Resume interrupted workflows from checkpoints
    - Multi-environment state isolation
 
-**No UI is required.**
-**A FastAPI server is not required for the Golden Path to work.**
+**No UI or server is required.**
 **All Git operations are integrated into the CLI workflow.**
 
 ---
@@ -298,7 +297,7 @@ Allowed transitions (mirrors `ALLOWED_TRANSITIONS`; a test keeps them equal):
 - MERGED -> (none)
 
 The CLI is the authority for transitions.
-UIs (web/electron) are views over this state machine, not the source of truth.
+UIs (the `cf dashboard` TUI) are views over this state machine, not the source of truth.
 There is no review state: `cf pr create` and `cf pr merge` do not change task
 status. MERGED is set explicitly with `cf tasks set status <id> MERGED`.
 
@@ -306,14 +305,12 @@ status. MERGED is set explicitly with `cf tasks set status <id> MERGED`.
 
 ## Implementation Principles
 
-### Core-first (no FastAPI in the core)
+### Core-first (headless core)
 - Domain logic must live in a reusable core module/package.
-- Core must not import FastAPI, websockets, or HTTP request objects.
-- FastAPI server (if used) must be a thin adapter over core.
+- Core must not import web frameworks, websockets, or HTTP request objects.
 
-### CLI-first (server optional)
-- Golden Path commands must work without any running backend server.
-- If a server exists, it may be started separately (`codeframe serve`) and must wrap core.
+### CLI-first (no server)
+- Golden Path commands work from the CLI with no backend server (the server was removed in #1477).
 
 ### Salvage safely
 - Legacy code can be read and copied from.

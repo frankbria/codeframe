@@ -21,9 +21,8 @@ equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
    ```bash
    export ANTHROPIC_API_KEY=sk-ant-...
    ```
-   Or store it once with `cf auth setup --provider anthropic` (the web UI's
-   Settings → API Keys does the same). A set environment variable wins over a
-   stored key.
+   Or store it once with `cf auth setup --provider anthropic`. A set
+   environment variable wins over a stored key.
    To use OpenAI-compatible providers (OpenAI, Ollama, vLLM, or any compatible endpoint):
    ```bash
    export CODEFRAME_LLM_PROVIDER=openai      # or: ollama, vllm, compatible
@@ -31,82 +30,6 @@ equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
    export OPENAI_API_KEY=sk-...              # required for openai; not needed for local providers
    export OPENAI_BASE_URL=http://localhost:11434/v1  # for local providers (ollama, vllm)
    ```
-3. **`AUTH_SECRET` (required to run the server)** — the web UI / API
-   (`codeframe serve`) signs JWTs with this secret. Authentication is **on by
-   default**, so the server **refuses to start** with the built-in default
-   secret — set a strong random value:
-   ```bash
-   export AUTH_SECRET=$(openssl rand -hex 32)
-   ```
-   The Golden Path CLI does not use auth and needs no secret. For a throwaway
-   local server only, set `CODEFRAME_ALLOW_INSECURE_SECRET=1` to start without
-   a secret — it signs JWTs with the known default (forgeable, never expose it)
-   while keeping auth on so the REST API and the session/terminal WebSockets all
-   work. (`CODEFRAME_AUTH_REQUIRED=false` is a separate knob that disables auth
-   entirely for local dev — both the REST API and the session/terminal
-   WebSockets then accept unauthenticated connections, so the sessions UI is
-   fully usable in that mode.)
-4. **`CODEFRAME_BOOTSTRAP_TOKEN` (only once the server is reachable over a
-   network)** — creating the very first account uses an unauthenticated route,
-   so on a fresh deploy whoever reaches it first claims the instance as admin.
-   Without it, the first account can only be created by running
-   `codeframe auth register` on the server host itself. Any request through a
-   proxy is refused, and that includes the web UI's sign-up form, because Next
-   proxies it (#1274). To sign up from the browser, or from anywhere else, set
-   this and pass it as the `X-Bootstrap-Token` header (or use the field on the
-   sign-up form):
-   ```bash
-   export CODEFRAME_BOOTSTRAP_TOKEN=$(openssl rand -hex 32)
-   ```
-   See `deploy/README.md` → "Creating the first account".
-5. **`WORKSPACE_ROOT` (required to run the server)** — the directories the
-   server may open workspaces and terminal sessions in. With auth on, the
-   server **refuses to start** without it, because an empty allowlist lets any
-   signed-in user open a shell anywhere on the host. Separate several roots
-   with `:`:
-   ```bash
-   export WORKSPACE_ROOT=$HOME/projects
-   ```
-   On a single-user local machine, `CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1`
-   starts it without one, with a loud warning. Never set it on a server others
-   can reach.
-
-## Run the web UI locally
-
-The web UI is a separate Next.js app that talks to `codeframe serve`. In one
-terminal, start the server (it binds `127.0.0.1:8080`):
-
-```bash
-export AUTH_SECRET=$(openssl rand -hex 32) WORKSPACE_ROOT=$HOME/projects
-codeframe serve
-```
-
-In a second terminal, start the UI on <http://localhost:3000>:
-
-```bash
-cd web-ui
-npm ci
-npm run dev
-```
-
-Its defaults already point at `localhost:8080`. If the server runs elsewhere,
-set these in `web-ui/.env.local` and restart `npm run dev`:
-
-| Variable | What it does |
-|---|---|
-| `BACKEND_ORIGIN` | Where Next proxies `/api` and `/auth` (default `http://localhost:8080`) |
-| `NEXT_PUBLIC_API_URL` | The backend origin the browser dials directly for streams and sockets |
-| `NEXT_PUBLIC_SSE_URL`, `NEXT_PUBLIC_WS_URL` | Only if streams or sockets live on a different origin than the API |
-
-Create the first account from the same machine, then sign in at
-<http://localhost:3000/login>:
-
-```bash
-codeframe auth register --email you@example.com
-```
-
-The sign-up form in the browser needs `CODEFRAME_BOOTSTRAP_TOKEN` (item 4),
-because it reaches the server through Next's proxy.
 
 ## Coming from ralph?
 
@@ -445,24 +368,6 @@ codeframe checkpoint create "MVP complete"
 | `cf config telemetry status` | Show current telemetry state and config path |
 
 > On first interactive use, CodeFRAME shows a one-time prompt asking whether to enable telemetry (default: No). You can also set `CODEFRAME_TELEMETRY=on|off` or `DO_NOT_TRACK=1` to skip the prompt. See [PRIVACY.md](../PRIVACY.md) for exactly what is collected.
-
-### Rate limiting in production
-
-The API server (`cf serve`) rate-limits requests, including auth brute-force
-protection. The storage backend is selected by `RATE_LIMIT_STORAGE` (default
-`memory`).
-
-> ⚠️ **Multi-worker deployments require Redis.** With the default in-memory
-> storage, each worker process keeps its **own** rate-limit counters, so running
-> with more than one worker (e.g. `uvicorn --workers 4`) multiplies the effective
-> limit by the worker count and silently weakens auth brute-force protection. For
-> any multi-worker deployment, set `RATE_LIMIT_STORAGE=redis` and `REDIS_URL` for
-> shared, cross-worker buckets, and install the redis client with the extra:
-> `uv tool install 'codeframe-ai[redis]'` (or `pip install 'codeframe-ai[redis]'`).
-> Without it the server refuses to start and names the extra, rather than quietly
-> falling back to per-worker counters. The server logs a `WARNING` at startup when it
-> detects in-memory storage with multiple workers (via the `WEB_CONCURRENCY` /
-> `UVICORN_WORKERS` env vars).
 
 ---
 

@@ -2,15 +2,14 @@
 Integration Test Fixtures for CodeFRAME
 
 Provides shared fixtures for integration tests that use real implementations:
-- Real SQLite database (in-memory or temp file)
 - Real file system operations in temp directories
 - Real subprocess execution for quality gates
 - Mock only external services (Anthropic, OpenAI, GitHub APIs)
 
 Usage:
     @pytest.mark.integration
-    async def test_something(real_db, test_workspace, mock_llm_api):
-        # Your test using real database and workspace
+    async def test_something(test_workspace, mock_llm_api):
+        # Your test using a real workspace
         pass
 """
 
@@ -20,51 +19,6 @@ from typing import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
-from codeframe.platform_store.database import Database
-
-
-# =============================================================================
-# Database Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def real_db() -> Generator[Database, None, None]:
-    """Create a real in-memory SQLite database with full schema.
-
-    This fixture provides a real database instance for integration testing.
-    The database is isolated per test and cleaned up automatically.
-
-    Yields:
-        Database: A fully initialized in-memory database instance.
-    """
-    db = Database(":memory:")
-    db.initialize()
-    yield db
-    if db.conn:
-        db.conn.close()
-
-
-@pytest.fixture
-def real_db_file(tmp_path: Path) -> Generator[Database, None, None]:
-    """Create a real SQLite database file for persistence testing.
-
-    Use this fixture when you need to test database persistence across
-    multiple database connections or process restarts.
-
-    Args:
-        tmp_path: Pytest temp directory fixture
-
-    Yields:
-        Database: A file-backed database instance.
-    """
-    db_path = tmp_path / "test_codeframe.db"
-    db = Database(str(db_path))
-    db.initialize()
-    yield db
-    if db.conn:
-        db.conn.close()
 
 
 # =============================================================================

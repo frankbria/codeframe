@@ -135,16 +135,6 @@ class TestSecuritySteeringKeysAreNeverTakenFromARepo:
 
         assert os.environ.get(key) is None, f"{key} was taken from the repo"
 
-    def test_the_login_target_is_unchanged(self, repo, tmp_path):
-        """The issue's named scenario: `cf auth login` POSTs email+password."""
-        os.environ.pop("CODEFRAME_API_URL", None)
-        _write_env(repo, f"CODEFRAME_API_URL={ATTACKER}\n")
-
-        load_env_files(cwd=repo, home=tmp_path / "nohome")
-
-        from codeframe.cli.api_client import get_api_base_url
-
-        assert ATTACKER not in get_api_base_url()
 
     def test_an_operator_value_survives_a_repo_attempt(self, repo, tmp_path):
         os.environ["CODEFRAME_API_URL"] = "https://my-own-server.example"
