@@ -40,12 +40,10 @@ LIVE_CALL_SITES = (
     "codeframe/cli",
     "codeframe/core",
     "codeframe/lib",
-    "codeframe/ui",
 )
 EXCLUDED_FILES = (
     # Pricing lookups keyed by the dated names the API reports back.
     "codeframe/lib/metrics_tracker.py",
-    "codeframe/core/adapters/streaming_chat.py",
 )
 
 
