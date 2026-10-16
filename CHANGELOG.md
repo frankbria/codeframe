@@ -9,6 +9,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf proof export` names no local path** (#1518). The report is meant to be
+  shared, but it carried the sender's absolute repository path and absolute
+  artifact paths. The repository is now the `origin` URL, with any embedded
+  credentials removed, or the folder name. Artifact paths are relative to the
+  repository.
+
 - **A moved or copied repo checks its own tree** (#1515). The workspace kept
   the absolute path it was created at, so after a move every proof check came
   back "not collected", and after a copy `cf proof run` tested the original
