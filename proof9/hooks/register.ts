@@ -1,5 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
 
+import { isGitCommit } from './commit.ts'
+
 // The CLI is the product; this plugin is a front door. Every call is `cf … --json`
 // by argv (no shell), and nothing here repeats what the CLI decides.
 
@@ -190,12 +192,9 @@ async function refreshStatus($: EngineInterface): Promise<void> {
   const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<{ counts: { total: number; failing: number } }>(ran)
   if (!doc) return $.ui.status(undefined)
   const { total, failing } = doc.counts
-  $.ui.status(total ? `proof9 · ${total} obligations · ${failing} failing` : 'proof9 · no obligations yet')
+  const noun = total === 1 ? 'obligation' : 'obligations'
+  $.ui.status(total ? `proof9 · ${total} ${noun} · ${failing} failing` : 'proof9 · no obligations yet')
 }
-
-// `git` starting a command (line start, or after ; && || | ( or $( ), any global
-// flags, then `commit` as a word: not `echo git commit`, not `git commit-tree`.
-const GIT_COMMIT = /(?:^|[;&|(]|\$\()\s*git(?:\s+-[cC]\s+\S+|\s+--?[\w-]+(?:=\S+)?)*\s+commit(?=\s|$|[;&|)])/m
 
 type ProofRun = {
   failed: boolean
@@ -223,7 +222,9 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     return { kind: 'error', person: cannotRun(ran.failed).replace(/\n/g, ' ') }
   }
   const doc = parse<ProofRun>(ran)
-  if (!doc || ![0, 1, 2].includes(ran.exitCode)) {
+  // Exit 1 means a failure: without `failed: true` beside it the document is not
+  // one we can read, and block mode must not wave the commit through.
+  if (!doc || typeof doc.failed !== 'boolean' || ![0, 1, 2].includes(ran.exitCode) || (ran.exitCode === 1 && !doc.failed)) {
     return { kind: 'error', person: `cf proof run failed: ${errorText(ran).split('\n')[0]}` }
   }
   if (doc.failed) {
@@ -253,7 +254,8 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
 
 export const register: Register = (on, options) => {
   const block = options.mode === 'block'
-  const timeoutSeconds = typeof options.timeoutSeconds === 'number' ? options.timeoutSeconds : 120
+  const limit = options.timeoutSeconds
+  const timeoutSeconds = typeof limit === 'number' && limit > 0 ? limit : 120
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -266,21 +268,21 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (!GIT_COMMIT.test(e.command)) return next(e)
+    if (!isGitCommit(e.command)) return next(e)
     const verdict = await preCommitVerdict($, timeoutSeconds)
     if (verdict.kind === 'error' && block) {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
     }
     if (verdict.kind === 'failing' && block) {
       $.ui.toast(verdict.person)
-      await refreshStatus($)
+      await attempt(() => refreshStatus($))
       return { deny: verdict.deny }
     }
     if (verdict.kind !== 'quiet') {
       $.ui.toast(verdict.kind === 'error' ? `proof9 could not check this commit: ${verdict.person}` : verdict.person)
     }
     const ran = await next(e)
-    await refreshStatus($)
+    await attempt(() => refreshStatus($))
     // Warn mode: Claude reads the failures after the commit's own output and can fix them now.
     return verdict.kind === 'failing' && ran.deny === undefined
       ? { ...ran, context: [...(ran.context ?? []), verdict.claude] }

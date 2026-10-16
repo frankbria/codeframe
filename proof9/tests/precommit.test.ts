@@ -211,6 +211,53 @@ describe('block mode (opt-in)', () => {
   })
 })
 
+describe('block mode never denies what is not a commit', () => {
+  for (const command of ['echo "done; git commit later"', 'cat > h.sh <<EOF\ngit commit -m x\nEOF', 'git -C commit status']) {
+    test(JSON.stringify(command), { options: { mode: 'block' } }, async ($, on) => {
+      const w = world(on, json(FAILING_RUN, 1))
+      const out = await bash($, command)
+      expect(out.deny).toBeUndefined()
+      expect(w.calls).toEqual([])
+      expect(w.commands).toEqual([command])
+    })
+  }
+})
+
+describe('review fixes', () => {
+  test('exit 1 without failed:true is an error, so block mode denies', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json({ detail: 'something else' }, 1))
+    const out = await bash($, 'git commit -m x')
+    expect(w.commands).toEqual([])
+    expect(out.deny).toBeDefined()
+  })
+
+  test('a non-empty ledger that verified nothing (exit 2) says so and does not block', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json({ ...EMPTY_LEDGER, empty_reason: 'excluded_by_config', description: 'gates disabled' }, 2))
+    await bash($, 'git commit -m x')
+    expect(w.commands).toEqual(['git commit -m x'])
+    expect(w.toasts.some(t => t.includes('nothing was verified') && t.includes('gates disabled'))).toBe(true)
+  })
+
+  test('a nonsense time limit falls back to 120 s', { options: { timeoutSeconds: 0 } }, async ($, on) => {
+    const w = world(on, json(PASSING_RUN))
+    await bash($, 'git commit -m x')
+    expect(w.calls.find(c => c.argv[2] === 'run')?.timeoutMs).toBe(120_000)
+  })
+
+  test('a status-line failure after the commit does not lose what Claude is told', async ($, on) => {
+    const w = world(on, json(FAILING_RUN, 1), { deny: 'status exploded' })
+    const out = await bash($, 'git commit -m x')
+    expect(w.commands).toEqual(['git commit -m x'])
+    expect((out.context ?? []).join('\n')).toContain('REQ-0003')
+  })
+
+  test('one obligation is singular', async ($, on) => {
+    const w = world(on, json(PASSING_RUN), json({ counts: { ...STATUS.counts, total: 1, failing: 0 }, expired_waivers: [] }))
+    await bash($, 'git commit -m x')
+    expect(w.statuses.at(-1)).toBe('proof9 · 1 obligation · 0 failing')
+  })
+})
+
 describe('status line', () => {
   test('is cleared when there is no workspace', async ($, on) => {
     const w = world(on, json(EMPTY_LEDGER, 2), { exitCode: 1, stderr: 'Error: No workspace found' })
