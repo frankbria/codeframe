@@ -46,6 +46,10 @@
     .brand { display: block; margin-bottom: 24px; }
     .brand img { display: block; height: auto; }
     .lede { color: var(--muted); font-size: 1.1rem; }
+    .install { margin: 20px 0 0; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .install code { font-size: 0.95rem; overflow-wrap: anywhere; }
+    .install p { margin: 0; }
+    .install .note { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
     figure { margin: 28px 0 0; }
     figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
     figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
@@ -69,16 +73,22 @@
     <p class="lede">CodeFRAME owns everything before and after the code: requirements, task planning,
       verification and release. The coding itself goes to the agent of your choice.</p>
 
+    <!-- The one call to action: install the plugin (#1476). -->
+    <div class="install" aria-label="Install">
+      <p><code>/plugin install proof9 --marketplace frankbria/codeframe</code></p>
+      <p class="note">At a Claude Code prompt. It needs the <code>cf</code> CLI:
+        <code>uv tool install codeframe-ai</code>.</p>
+    </div>
+
     <figure>
       <!-- Reduced-motion visitors get the last frame; the GIF loops forever otherwise. -->
       <picture>
-        <source srcset="cli-tour-still.png" media="(prefers-reduced-motion: reduce)">
-        <img src="cli-tour.gif" width="979" height="739"
-             alt="Terminal demo: cf init, cf prd add, cf tasks generate producing a task graph of 18 tasks, cf proof capture recording a bug as requirement REQ-0001, and cf proof status showing it open.">
+        <source srcset="proof9-loop-still.png" media="(prefers-reduced-motion: reduce)">
+        <img src="proof9-loop.gif" width="944" height="647"
+             alt="Claude Code session with the proof9 plugin: asked to make shipping a flat $5 per order, Claude reads the ledger, keeps free shipping over $50 because two locked requirements depend on it, commits with all four requirements passing, and the proof ledger pane shows every requirement satisfied.">
       </picture>
-      <!-- COPY: caption -->
-      <figcaption>The command line, sped up. Full walkthrough in the
-        <a href="https://github.com/frankbria/codeframe/blob/main/docs/CLI_GUIDE.md">CLI guide</a>.</figcaption>
+      <figcaption>A real session on codeframe 0.9.7. Asked for a change that would undo a past
+        decision, Claude finds the locked requirement and keeps it.</figcaption>
     </figure>
   </header>
 
@@ -97,6 +107,8 @@
       <div class="stat"><b>7,500+</b><span>automated tests passing in CI</span></div>
       <div class="stat"><b>85%+</b><span>test coverage, with an 80% floor CI enforces</span></div>
     </div>
+    <p>Every check leaves evidence. See a <a href="sample-evidence-report.html">sample evidence report</a>
+      from the session above, made with <code>cf proof export</code>.</p>
     <p>Read the code in the <a href="https://github.com/frankbria/codeframe">repository</a>
       and what changed in each release in the
       <a href="https://github.com/frankbria/codeframe/blob/main/CHANGELOG.md">changelog</a>.</p>
@@ -115,14 +127,15 @@
     </blockquote>
   </section>
 
-  <section aria-labelledby="contact">
-    <h2 id="contact">Contact</h2>
-    <!-- COPY: contact. Add a calendar link here when one exists. -->
-    <p>If you ship software with coding agents and want to compare notes, write to
-      <a href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>.</p>
+  <section aria-labelledby="install">
+    <h2 id="install">Install</h2>
+    <p><code>/plugin install proof9 --marketplace frankbria/codeframe</code></p>
+    <p>Then <code>/proof</code> to open the ledger. Full steps in the
+      <a href="https://github.com/frankbria/codeframe#quick-start">README</a>.</p>
   </section>
 
   <footer>
+    <p>Questions or notes from shipping with coding agents: <a href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>.</p>
     <p>CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</p>
   </footer>
 </main>

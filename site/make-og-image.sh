@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates site/og-image.png (1200x630 social card) and site/cli-tour-still.png
+# Regenerates site/og-image.png (1200x630 social card) and site/proof9-loop-still.png
 # (the reduced-motion still: the demo GIF's last frame). Needs ffmpeg + DejaVu fonts.
 # Edit the COPY strings below when marketing copy changes, then re-run.
 set -euo pipefail
@@ -29,4 +29,4 @@ drawtext=fontfile=$BOLD:textfile=$T/URL:expansion=none:fontsize=30:fontcolor=0x9
   og-image.png
 
 # -update 1 keeps overwriting one output file, so the last decoded frame wins.
-ffmpeg -v error -y -i cli-tour.gif -update 1 cli-tour-still.png
+ffmpeg -v error -y -i proof9-loop.gif -update 1 proof9-loop-still.png
