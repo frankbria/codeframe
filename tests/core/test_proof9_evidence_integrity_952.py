@@ -146,9 +146,8 @@ class TestRunIdIsAFullUUID:
         """`str(uuid4())[:8]` collides at ~600 runs, letting a passing run
         absorb a failing run's evidence."""
         import codeframe.core.proof.runner as runner_mod
-        import codeframe.ui.routers.proof_v2 as router_mod
 
-        for mod in (runner_mod, router_mod):
+        for mod in (runner_mod,):
             source = Path(mod.__file__).read_text(encoding="utf-8")
             assert "uuid.uuid4())[:8]" not in source, (
                 f"{Path(mod.__file__).name} still truncates the run id"
@@ -384,11 +383,11 @@ class TestTamperedEvidenceBlocksTheMergeGate:
 
         assert list_blocking_requirements(workspace) == []
 
-    def test_both_merge_gates_use_the_verifying_query(self):
-        """API and CLI must agree, and neither may go back to the raw query."""
+    def test_the_merge_gate_uses_the_verifying_query(self):
+        """The merge gate may not go back to the raw query (the API gate went with the server, #1477)."""
         from pathlib import Path as _P
 
-        for mod in ("codeframe/ui/routers/pr_v2.py", "codeframe/cli/pr_commands.py"):
+        for mod in ("codeframe/cli/pr_commands.py",):
             source = _P(mod).read_text(encoding="utf-8")
             assert "list_blocking_requirements(" in source, f"{mod} skips verification"
             assert "list_requirements(workspace, status=ReqStatus.OPEN)" not in source, (

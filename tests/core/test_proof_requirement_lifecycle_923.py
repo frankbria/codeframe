@@ -213,24 +213,3 @@ class TestRunLookupFallsBackToLedger:
         )
 
         assert ledger.get_run(workspace, "run-923") is not None
-
-
-# ---------------------------------------------------------------------------
-# 5. Waiver attribution
-# ---------------------------------------------------------------------------
-
-
-class TestWaiverAttribution:
-    def test_the_request_model_no_longer_carries_approved_by(self):
-        """AC5. Taken from the body, a merge-gate bypass records whatever the
-        caller typed — the one field that must be the authenticated principal."""
-        from codeframe.ui.routers.proof_v2 import WaiveRequirementRequest as WaiveRequest
-
-        assert "approved_by" not in WaiveRequest.model_fields, (
-            "approved_by must come from require_auth, not the request body"
-        )
-
-    def test_the_capture_model_no_longer_carries_created_by(self):
-        from codeframe.ui.routers.proof_v2 import CaptureRequirementRequest as CaptureRequest
-
-        assert "created_by" not in CaptureRequest.model_fields

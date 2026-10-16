@@ -236,12 +236,6 @@ class TestReviewFindings:
         assert result.files_changed == 1
         assert "doomed.txt" not in _run("git", "ls-files", cwd=repo).stdout
 
-    def test_skipped_reaches_the_api_response(self):
-        """It was computed in core and discarded by the response model, so the
-        caller got a 201 with no way to learn a path was dropped."""
-        from codeframe.ui.routers.git_v2 import CommitResultResponse
-
-        assert "skipped" in CommitResultResponse.model_fields
 
     def test_prose_mentioning_rename_is_not_labelled_renamed(self, workspace, repo):
         """The check was an unanchored substring scan, so a diff hunk containing

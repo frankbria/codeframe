@@ -1,12 +1,12 @@
-"""Issue #953 — platform_store write serialization, bounded reads, schema versioning.
+"""Issue #953 — token repository write serialization and bounded reads.
 
-Covers the five acceptance criteria:
-1. Every sync repository write goes through ``BaseRepository._execute``/``_commit``
+1. Every sync repository write goes through ``BaseRepository._execute_write``
    under the shared lock; two threads writing concurrently lose no rows.
 2. ``save_token_usage`` has a single INSERT path; ``session_id`` is gone from the model.
 3. ``get_project_costs_aggregate`` is deleted; whole-table reads bound or stream.
-4. A ``PRAGMA user_version`` migration registry applies pending migrations on init.
-5. ``AUDIT_VERBOSITY`` is gone.
+
+The control-plane parts of #953 (schema versioning, audit verbosity) went with
+the server in #1477.
 """
 
 import ast
@@ -18,9 +18,7 @@ from pathlib import Path
 import pytest
 
 from codeframe.core.models import CallType, TokenUsage
-from codeframe.platform_store import schema_manager as schema_manager_module
-from codeframe.platform_store.database import Database
-from codeframe.platform_store.schema_manager import SchemaManager
+from codeframe.platform_store.repositories import TokenRepository
 
 pytestmark = pytest.mark.v2
 
@@ -42,12 +40,18 @@ def _usage(**overrides) -> TokenUsage:
     return TokenUsage(**defaults)
 
 
+class _Store:
+    """A shared connection and lock, the way concurrent callers share them."""
+
+    def __init__(self, path):
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self._sync_lock = threading.Lock()
+        self.token_usage = TokenRepository(sync_conn=self.conn, sync_lock=self._sync_lock)
+
+
 @pytest.fixture
 def db(tmp_path):
-    database = Database(tmp_path / "platform.db")
-    database.initialize()
-    # The control-plane schema does not own token_usage (it is per-workspace);
-    # create it here so the token repository has a table to write to.
+    database = _Store(tmp_path / "state.db")
     database.conn.execute(
         """
         CREATE TABLE IF NOT EXISTS token_usage (
@@ -61,7 +65,7 @@ def db(tmp_path):
     )
     database.conn.commit()
     yield database
-    database.close()
+    database.conn.close()
 
 
 # --- AC1: all sync writes serialized behind the shared lock ------------------
@@ -134,21 +138,7 @@ class _CountingLock:
 
 @pytest.mark.parametrize(
     "repo_name, write",
-    [
-        (
-            "audit_logs",
-            lambda repo: repo.create_audit_log(
-                event_type="auth.login.success",
-                user_id=1,
-                resource_type="session",
-                resource_id=1,
-                ip_address=None,
-                metadata=None,
-                timestamp=datetime.now(timezone.utc),
-            ),
-        ),
-        ("token_usage", lambda repo: repo.save_token_usage(_usage())),
-    ],
+    [("token_usage", lambda repo: repo.save_token_usage(_usage()))],
 )
 def test_a_write_takes_the_lock_exactly_once(db, repo_name, write):
     """One write == one critical section spanning both the statement and its commit.
@@ -172,42 +162,26 @@ def test_a_write_takes_the_lock_exactly_once(db, repo_name, write):
     )
 
 
-def test_concurrent_audit_and_token_writes_lose_no_rows(db):
-    """Two threads hammering different repositories keep every row."""
+def test_concurrent_token_writes_lose_no_rows(db):
+    """Two threads writing through the shared lock keep every row."""
     errors: list[BaseException] = []
     n = 60
 
-    def write_audit():
+    def write_tokens(prefix):
         try:
             for i in range(n):
-                db.audit_logs.create_audit_log(
-                    event_type="auth.login.success",
-                    user_id=1,
-                    resource_type="session",
-                    resource_id=i,
-                    ip_address="127.0.0.1",
-                    metadata={"i": i},
-                    timestamp=datetime.now(timezone.utc),
-                )
+                db.token_usage.save_token_usage(_usage(task_id=f"{prefix}-{i}"))
         except BaseException as exc:  # pragma: no cover - surfaced via assert
             errors.append(exc)
 
-    def write_tokens():
-        try:
-            for i in range(n):
-                db.token_usage.save_token_usage(_usage(task_id=f"task-{i}"))
-        except BaseException as exc:  # pragma: no cover - surfaced via assert
-            errors.append(exc)
-
-    threads = [threading.Thread(target=write_audit), threading.Thread(target=write_tokens)]
+    threads = [threading.Thread(target=write_tokens, args=(p,)) for p in ("a", "b")]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
 
     assert errors == []
-    assert db.conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0] == n
-    assert db.conn.execute("SELECT COUNT(*) FROM token_usage").fetchone()[0] == n
+    assert db.conn.execute("SELECT COUNT(*) FROM token_usage").fetchone()[0] == 2 * n
 
 
 # --- AC2: single INSERT path, no phantom session_id -------------------------
@@ -215,8 +189,6 @@ def test_concurrent_audit_and_token_writes_lose_no_rows(db):
 
 def test_save_token_usage_works_without_a_lock(tmp_path):
     """A repository built without a lock uses the same code path."""
-    from codeframe.platform_store.repositories import TokenRepository
-
     conn = sqlite3.connect(tmp_path / "no_lock.db")
     conn.execute(
         "CREATE TABLE token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT,"
@@ -290,81 +262,3 @@ def test_streaming_iterator_honours_project_and_agent_filters(db):
 
     start = datetime.now(timezone.utc) + timedelta(days=1)
     assert list(db.token_usage.get_token_usage_iter(start_date=start)) == []
-
-
-# --- AC4: schema versioning -------------------------------------------------
-
-
-def test_fresh_database_is_stamped_at_the_current_schema_version(db):
-    version = db.conn.execute("PRAGMA user_version").fetchone()[0]
-    assert version == SchemaManager.SCHEMA_VERSION
-    assert version > 0
-
-
-def test_pending_migration_is_applied_to_a_preexisting_database(tmp_path, monkeypatch):
-    """A column added by a new migration appears on an already-created DB."""
-    db_path = tmp_path / "upgrade.db"
-
-    first = Database(db_path)
-    first.initialize()
-    cols = {r[1] for r in first.conn.execute("PRAGMA table_info(audit_logs)")}
-    assert "trace_id" not in cols
-    first.close()
-
-    def add_trace_id(cursor: sqlite3.Cursor) -> None:
-        cursor.execute("ALTER TABLE audit_logs ADD COLUMN trace_id TEXT")
-
-    next_version = SchemaManager.SCHEMA_VERSION + 1
-    monkeypatch.setattr(
-        schema_manager_module.SchemaManager,
-        "MIGRATIONS",
-        SchemaManager.MIGRATIONS + [(next_version, add_trace_id)],
-    )
-    monkeypatch.setattr(schema_manager_module.SchemaManager, "SCHEMA_VERSION", next_version)
-
-    second = Database(db_path)
-    second.initialize()
-    cols = {r[1] for r in second.conn.execute("PRAGMA table_info(audit_logs)")}
-    assert "trace_id" in cols
-    assert second.conn.execute("PRAGMA user_version").fetchone()[0] == next_version
-    second.close()
-
-    # Re-running is a no-op, not a duplicate ALTER.
-    third = Database(db_path)
-    third.initialize()
-    assert third.conn.execute("PRAGMA user_version").fetchone()[0] == next_version
-    third.close()
-
-
-def test_interactive_sessions_user_id_migration_upgrades_a_legacy_database(tmp_path):
-    """The pre-#655 table shape gains user_id through the migration registry."""
-    db_path = tmp_path / "legacy.db"
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE interactive_sessions (
-            id TEXT PRIMARY KEY, workspace_path TEXT NOT NULL, task_id TEXT,
-            state TEXT NOT NULL DEFAULT 'active', agent_type TEXT NOT NULL DEFAULT 'claude',
-            model TEXT, cost_usd REAL DEFAULT 0.0, input_tokens INTEGER DEFAULT 0,
-            output_tokens INTEGER DEFAULT 0, created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL, ended_at TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
-
-    db = Database(db_path)
-    db.initialize()
-    cols = {r[1] for r in db.conn.execute("PRAGMA table_info(interactive_sessions)")}
-    assert "user_id" in cols
-    db.close()
-
-
-# --- AC5: AUDIT_VERBOSITY removed -------------------------------------------
-
-
-def test_audit_verbosity_is_gone():
-    from codeframe.platform_store import database as database_module
-
-    assert not hasattr(database_module, "AUDIT_VERBOSITY")

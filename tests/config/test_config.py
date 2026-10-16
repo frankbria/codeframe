@@ -22,10 +22,6 @@ class TestGlobalConfig:
 
         config = GlobalConfig(_env_file=None)
         assert config.database_path == ".codeframe/platform.db"
-        # 127.0.0.1 since #935 — binding every interface by default put
-        # workspace file access and agent execution on the LAN.
-        assert config.api_host == "127.0.0.1"
-        assert config.api_port == 8080
         assert config.log_level == "INFO"
         assert config.debug is False
         assert config.default_provider == "claude"
@@ -45,23 +41,6 @@ class TestGlobalConfig:
         # Invalid log level should raise ValueError
         monkeypatch.setenv("LOG_LEVEL", "INVALID")
         with pytest.raises(ValueError, match="LOG_LEVEL must be one of"):
-            GlobalConfig(_env_file=None)
-
-    def test_port_validation(self, monkeypatch):
-        """Test port validation."""
-        # Valid port (use env var as that's how BaseSettings works)
-        monkeypatch.setenv("API_PORT", "3000")
-        config = GlobalConfig(_env_file=None)
-        assert config.api_port == 3000
-
-        # Invalid port (too low)
-        monkeypatch.setenv("API_PORT", "0")
-        with pytest.raises(ValueError, match="API_PORT must be between"):
-            GlobalConfig(_env_file=None)
-
-        # Invalid port (too high)
-        monkeypatch.setenv("API_PORT", "99999")
-        with pytest.raises(ValueError, match="API_PORT must be between"):
             GlobalConfig(_env_file=None)
 
 

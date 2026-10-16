@@ -14,7 +14,7 @@ This document prevents “architecture freestyling” by providing a single auth
 
 ## Target module layout (within existing repo structure)
 
-Repository currently uses a top-level `codeframe/` Python package and `web-ui/` at top level.
+Repository uses a top-level `codeframe/` Python package (the web UI and server were removed in #1477).
 
 Add these subpackages under `codeframe/`:
 
@@ -41,13 +41,6 @@ Add these subpackages under `codeframe/`:
   - `git/` (branch/worktree/patch utilities + PR operations)
   - `fs/` (file operations)
   - `persistence/` (SQLite/filesystem implementations)
-- `codeframe/server/` (FastAPI wrapper; optional during Golden Path)
-  - `app.py` (FastAPI app)
-  - `routes/` (thin wrappers over core)
-
-Legacy quarantine:
-- Move `web-ui/` -> `legacy/web-ui/` (or `legacy/` equivalent)
-
 ---
 
 ## Shared concepts (authoritative)
@@ -60,7 +53,7 @@ Legacy quarantine:
 ### Event log (append-only)
 - Core emits events for all meaningful actions.
 - CLI prints selected events to stdout and can tail the log.
-- Server/UI may subscribe later; server is not required for event recording.
+- The `cf dashboard` TUI and `cf work follow` read the same log; no server is involved.
 
 ### State machine (task status)
 Statuses:
@@ -99,7 +92,6 @@ Each command:
 - Workspace record (id, path, created_at, config)
 
 **Notes:**
-- Must not start server.
 - Must succeed even if repo already initialized (idempotent).
 
 ---
@@ -293,8 +285,8 @@ Each command:
 - `codeframe.core.prd.refine_prd(prd_id, feedback) -> PrdRecord`
 - `codeframe.core.events.emit(workspace_id, "PRD_GENERATED", payload)`
 
-**Stopping (#1443):** discovery is bounded in core `PrdDiscoverySession`, so the
-CLI, API and web UI share the rules. A session completes when the model says
+**Stopping (#1443):** discovery is bounded in core `PrdDiscoverySession`, so every
+caller shares the rules. A session completes when the model says
 it's ready, or at `discovery_max_questions` answers (`.codeframe/config.yaml`;
 `--max-questions N` for one run; default 10), or, from answer 6 on, once
 coverage has reached 60% and its running max gains < 5 points over 3
@@ -552,7 +544,7 @@ one regeneration. `/done` finishes now. Categories still under 60 become an
 - fs adapter
 
 **Important constraint:**
-- Must work without FastAPI server running.
+- Must work from the CLI alone.
 
 ---
 
@@ -596,7 +588,7 @@ one regeneration. `/done` finishes now. Categories still under 60 become an
 - `--retry N, -r N`: Max retry attempts for failed tasks (default: 0, no retries)
 
 **Important constraint:**
-- Must work without FastAPI server running.
+- Must work from the CLI alone.
 - Phase 1: Serial execution only (parallel flag accepted but runs serial)
 - Phase 2: True parallel execution with dependency analysis
 
@@ -996,31 +988,13 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 
 ---
 
-## Server (optional adapter): `codeframe serve`
-
-### `codeframe serve`
-**Purpose:** Start FastAPI server as a wrapper over core.
-
-**CLI module:**
-- `codeframe/cli/app.py`
-
-**Server module:**
-- `codeframe/server/app.py`
-
-**Hard rules:**
-- FastAPI routes must call core functions.
-- No domain logic lives in routes.
-- Golden Path must work without running `serve`.
-
----
-
 ## “Keep vs Start Over” guidance (for existing CLI)
 
 ### Keep
 - Any existing Typer CLI scaffolding that:
   - already runs headlessly
   - maps to Golden Path commands cleanly
-  - does not import FastAPI routes or UI modules
+  - does not import UI modules
 
 ### Start over (recommended if unclear)
 - Create a new `codeframe/cli/app.py` Typer root.
@@ -1100,8 +1074,7 @@ Only after Enhanced MVP phases are complete:
 
 ## Quick “don’t do this” list (common failure modes)
 
-- Don’t build new HTTP endpoints to support the CLI.
-- Don’t require `codeframe serve` to be running for CLI commands.
+- Don’t add a server or HTTP endpoints to support the CLI (the server was removed in #1477).
 - Don’t implement UI concepts (tabs, panels, progress bars) in core.
 - Don’t refactor the entire repo layout “because it’s cleaner.”
 - Don’t add multi-model selection logic before Golden Path works.
@@ -1112,7 +1085,6 @@ Only after Enhanced MVP phases are complete:
 ## Acceptance criteria (must match Golden Path)
 
 If any of these are false, stop and fix before adding features:
-- Golden Path commands work without FastAPI running.
-- Core contains domain logic; server is thin.
-- Legacy UI is quarantined and not depended upon by core.
+- Golden Path commands work from the CLI alone.
+- Core contains domain logic; the CLI is thin.
 - Events are written durably and viewable from CLI.

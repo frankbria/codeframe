@@ -2,7 +2,7 @@
 
 *Last Updated: 2026-10-11*
 
-Two SQLite databases.
+One SQLite database per workspace.
 
 ## Per-workspace: `<repo>/.codeframe/state.db`
 
@@ -18,14 +18,7 @@ own `.gitignore` (#942).
 | `proof_requirements`, `proof_runs`, `proof_evidence`, `pr_proof_snapshots`, `pr_merge_overrides` | `core/proof/ledger.py` (lazy `ALTER TABLE` for new columns, e.g. `vacuous_pass`) |
 
 Per-workspace JSON config beside it: `.codeframe/config.yaml`, `proof_config.json`,
-`github_integration.json`, `notifications_config.json` (written via `atomic_write_json`).
-
-## Control plane: `platform.db`
-
-`codeframe/platform_store/database.py` (path: `DATABASE_PATH`, else `.codeframe/platform.db`);
-schema in `platform_store/schema_manager.py` (`SCHEMA_VERSION = 2`): `users`, `api_keys`,
-`audit_logs`, `interactive_sessions`, `session_messages`, `workspaces_registry`
-(write-once `owner_user_id`), `workspace_spend_users`.
+`github_integration.json`, `notifications_config.json`.
 
 ## Migrations
 

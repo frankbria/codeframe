@@ -231,19 +231,6 @@ class TestBanditOffPath:
         assert check.status == GateStatus.PASSED, check.output
 
 
-class TestReviewScannerOffPath:
-    def test_cf_review_still_scans(self, readme_install_path, repo):
-        """`cf review` checked shutil.which("bandit") and gave up on every README install."""
-        from codeframe.lib.quality.security_scanner import SecurityScanner
-
-        target = repo / "insecure.py"
-        target.write_text(_INSECURE)
-
-        findings = SecurityScanner(repo).analyze_file(target)
-
-        assert findings, "bandit found nothing in a known-insecure file"
-
-
 def test_a_clean_run_is_not_summarized_as_an_issue():
     """"All checks passed!" was counted as one issue line, so a PASSED gate's
     output read "1 issues found" — a contradiction on the success path."""

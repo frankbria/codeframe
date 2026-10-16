@@ -7,18 +7,16 @@ on:
     branches: [main, develop]
   workflow_call:  # Allow this workflow to be called by other workflows
   # On-demand full sweep (#1236): the nightly-only jobs below also honour a
-  # manual dispatch, so a cross-browser failure can be reproduced on a branch
+  # manual dispatch, so a nightly failure can be reproduced on a branch
   # before merge instead of waiting for the 02:00 UTC cron.
   workflow_dispatch:
-  # Nightly browser-E2E schedule: runs the full Playwright suite (all browsers,
-  # all specs) against the current Phase-3+ UI. Rewritten in #684.
+  # Nightly schedule: runs the jobs that are too slow for every PR (E2E backend).
   schedule:
     - cron: '0 2 * * *'
 
 env:
   PYTHON_VERSION: '3.11'
-  # Same major as web-ui/Dockerfile and engines.node (#1301 — Node 20 is EOL).
-  # tests/ci/test_web_ui_lockfile_guard_1194.py fails if they drift apart.
+  # For the proof9-plugin job's Claude Code install (Node 20 is EOL, #1301).
   NODE_VERSION: '24'
 
 jobs:
@@ -62,21 +60,6 @@ jobs:
 
       - name: Run mypy (type checking)
         run: uv run mypy codeframe/
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install frontend dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Run frontend lint (eslint)
-        working-directory: web-ui
-        run: npm run lint
 
   # ============================================
   # Workflow Lint — a workflow that will not compile ships silently (#1122)
@@ -122,140 +105,6 @@ jobs:
             exit 1
           }
           ./actionlint -color
-
-  # ============================================
-  # Static Analysis - Check for Hardcoded URLs
-  # ============================================
-  check-hardcoded-urls:
-    name: Check for Hardcoded URLs
-    runs-on: ubuntu-latest
-    needs: code-quality
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Check for hardcoded localhost URLs in frontend
-        run: |
-          echo "🔍 Checking for hardcoded localhost URLs..."
-
-          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
-          if [ ! -d "web-ui/src" ]; then
-            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
-            exit 0
-          fi
-
-          # Check for hardcoded localhost URLs with common ports (3000-9999)
-          # We ONLY allow: process.env.NEXT_PUBLIC_* || 'http://localhost:...' (or ws://, wss://, https://)
-          # We reject: 'http://localhost:...' (without env var)
-          # We reject: 'http://localhost:...' || process.env.NEXT_PUBLIC_* (reversed)
-          HARDCODED=$(grep -rn -E "localhost:[0-9]{2,5}" web-ui/src \
-            --include="*.ts" \
-            --include="*.tsx" \
-            --include="*.js" \
-            --include="*.jsx" \
-            | grep -v "\.test\." \
-            | grep -v "\.spec\." \
-            | grep -v "// " \
-            | grep -v "/\*" \
-            | grep -vE "process\.env\.NEXT_PUBLIC_[A-Z0-9_]+\s*\|\|\s*['\"](https?|wss?)://" \
-            || true)
-
-          if [ -n "$HARDCODED" ]; then
-            echo "❌ Found hardcoded localhost URLs:"
-            echo "$HARDCODED"
-            echo ""
-            echo "💡 Fix: Use process.env.NEXT_PUBLIC_API_URL instead"
-            echo "   Example: const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';"
-            echo "   Note: The env var MUST come BEFORE the fallback (not reversed)"
-            exit 1
-          fi
-
-          echo "✅ No hardcoded localhost URLs found"
-
-      - name: Check for Vite-style env vars in Next.js code
-        run: |
-          echo "🔍 Checking for Vite-style environment variables..."
-
-          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
-          if [ ! -d "web-ui/src" ]; then
-            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
-            exit 0
-          fi
-
-          # Check for window.VITE_ or import.meta.env patterns
-          VITE_VARS=$(grep -rn "window\.VITE_\|import\.meta\.env" web-ui/src \
-            --include="*.ts" \
-            --include="*.tsx" \
-            --include="*.js" \
-            --include="*.jsx" \
-            | grep -v "// " \
-            | grep -v "/\*" \
-            || true)
-
-          if [ -n "$VITE_VARS" ]; then
-            echo "❌ Found Vite-style environment variables in Next.js code:"
-            echo "$VITE_VARS"
-            echo ""
-            echo "💡 Fix: Use process.env.NEXT_PUBLIC_* for Next.js"
-            echo "   Next.js uses NEXT_PUBLIC_ prefix for client-side env vars"
-            exit 1
-          fi
-
-          echo "✅ No Vite-style environment variables found"
-
-      - name: Verify API files use consistent env vars
-        run: |
-          echo "🔍 Verifying API files use process.env.NEXT_PUBLIC_API_URL..."
-
-          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
-          if [ ! -d "web-ui/src" ]; then
-            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
-            exit 0
-          fi
-
-          # This check is a heuristic to catch files making API calls to localhost
-          # without using environment variables. The primary hardcoded URL check above
-          # is more precise; this is a secondary sanity check.
-          #
-          # Note: Files that have BOTH a fetch/axios localhost call AND a process.env
-          # reference somewhere in the file are considered OK. This may miss edge cases
-          # where the env var is for something unrelated to the localhost URL.
-          ISSUES=""
-
-          # Check common API-related files for hardcoded URLs. Read from find
-          # rather than word-splitting its output: a path containing a space
-          # would otherwise split into two non-existent files and every grep
-          # below would silently miss.
-          while IFS= read -r file; do
-
-            # Skip test files
-            if [[ $file == *".test."* ]] || [[ $file == *".spec."* ]]; then
-              continue
-            fi
-
-            # Check if file has fetch or axios calls with hardcoded localhost
-            # AND does not have any NEXT_PUBLIC env var reference
-            if grep -qE "fetch\(.*localhost|axios.*localhost" "$file" 2>/dev/null; then
-              if ! grep -q "process.env.NEXT_PUBLIC" "$file" 2>/dev/null; then
-                ISSUES="${ISSUES}\n  - ${file}: Contains localhost URL without env var reference"
-              fi
-            fi
-          done < <(find web-ui/src -type f \( -name "*.ts" -o -name "*.tsx" \) \
-            -not -path "*/.next/*" \
-            -not -path "*/node_modules/*")
-
-          if [ -n "$ISSUES" ]; then
-            echo "⚠️ API files with potential issues (heuristic check):"
-            echo -e "$ISSUES"
-            echo ""
-            echo "💡 These files appear to use localhost URLs without environment variable configuration"
-            echo "   This is a heuristic check - verify manually if these are intentional."
-            # Changed from exit 1 to warning - the primary check above is more reliable
-            # exit 1
-          else
-            echo "✅ All API files properly configured"
-          fi
 
   # ============================================
   # Backend Unit Tests (After Code Quality)
@@ -320,58 +169,6 @@ jobs:
           files: ./coverage.xml
           flags: backend
           name: backend-coverage
-
-  # ============================================
-  # Frontend Unit Tests (After Code Quality)
-  # ============================================
-  frontend-tests:
-    name: Frontend Unit Tests
-    runs-on: ubuntu-latest
-    needs: code-quality
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Build (fail PR on TypeScript/build break)
-        working-directory: web-ui
-        env:
-          NEXT_TELEMETRY_DISABLED: 1
-        run: npm run build
-
-      - name: Run Jest tests with coverage
-        working-directory: web-ui
-        run: npm run test:coverage
-
-      - name: Check coverage threshold (65%)
-        working-directory: web-ui
-        run: |
-          COVERAGE=$(jq '.total.statements.pct' coverage/coverage-summary.json)
-          echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 65" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% is below 65% threshold"
-            exit 1
-          else
-            echo "✅ Coverage ${COVERAGE}% meets 65% threshold"
-          fi
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          directory: web-ui/coverage
-          flags: frontend
-          name: frontend-coverage
 
   # ============================================
   # E2E Backend Tests (Pytest)
@@ -481,9 +278,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-backend-reports
-          path: |
-            tests/e2e/fixtures/
-            .pytest_cache/
+          path: .pytest_cache/
 
       - name: Upload the pytest log
         if: always()
@@ -494,158 +289,12 @@ jobs:
           retention-days: 7
 
   # ============================================
-  # E2E Browser Tests (Playwright) — rewritten for the Phase-3+ UI (#684)
-  # ============================================
-  # `playwright.config.ts` (tests/e2e) starts the backend (uv uvicorn) and the
-  # frontend (next build + start) itself via its `webServer` block, and
-  # `global-setup.ts` seeds a workspace + login user. So these jobs only install
-  # deps + browsers and run Playwright.
-  #
-  #   - smoke: chromium, @smoke only, on every PR/push (gates merges via summary)
-  #   - full:  all browsers, all specs, nightly schedule
-  e2e-browser-smoke:
-    name: E2E Browser Smoke (Chromium)
-    runs-on: ubuntu-latest
-    needs: code-quality
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install Python deps
-        run: |
-          uv venv
-          uv sync --extra dev
-          uv pip install -e .
-
-      - name: Configure git (review diff needs a repo)
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install frontend deps
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Install E2E deps
-        working-directory: tests/e2e
-        run: npm ci
-
-      - name: Install Playwright browser (chromium)
-        working-directory: tests/e2e
-        run: npx playwright install --with-deps chromium
-
-      - name: Run Playwright smoke + lifecycle suites
-        working-directory: tests/e2e
-        # @lifecycle is the browser Golden Path (#1068). It runs on the mock
-        # provider — free, ~13s including server startup — so it belongs on
-        # every PR rather than in the nightly sweep. It is the only spec here
-        # that exercises the WRITE path (PRD upload, generation, execution)
-        # instead of asserting how seeded rows render.
-        run: npx playwright test --project=chromium --grep "@smoke|@lifecycle"
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: e2e-browser-smoke-report
-          path: tests/e2e/playwright-report/
-          retention-days: 7
-
-  e2e-browser-full:
-    name: E2E Browser Full (All Browsers)
-    runs-on: ubuntu-latest
-    # Nightly or on demand — the full cross-browser sweep is too heavy for every PR.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-
-      - name: Install Python deps
-        run: |
-          uv venv
-          uv sync --extra dev
-          uv pip install -e .
-
-      - name: Configure git (review diff needs a repo)
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install frontend deps
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Install E2E deps
-        working-directory: tests/e2e
-        run: npm ci
-
-      - name: Install Playwright browsers (all)
-        working-directory: tests/e2e
-        run: npx playwright install --with-deps
-
-      - name: Run full Playwright suite
-        working-directory: tests/e2e
-        run: npx playwright test
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: e2e-browser-full-report
-          path: tests/e2e/playwright-report/
-          retention-days: 7
-
-  # ============================================
   # Test Summary
   # ============================================
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls, e2e-browser-smoke, workflow-lint, proof9-plugin]
+    needs: [backend-tests, code-quality, workflow-lint, proof9-plugin]
     if: always()
 
     steps:
@@ -658,24 +307,15 @@ jobs:
             echo "|-------|--------|"
             echo "| Code Quality | ${{ needs.code-quality.result }} |"
             echo "| Workflow Lint | ${{ needs.workflow-lint.result }} |"
-            echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |"
             echo "| Backend Tests | ${{ needs.backend-tests.result }} |"
-            echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |"
-            echo "| E2E Browser Smoke | ${{ needs.e2e-browser-smoke.result }} |"
             echo "| proof9 Plugin | ${{ needs.proof9-plugin.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # The smoke job is a merge gate: treat any non-success terminal state
-          # (failure / cancelled / timed_out) as a gate failure, not just
-          # "failure". Other jobs keep the file's existing "failure"-only check.
+          # proof9-plugin treats any non-success terminal state (failure /
+          # cancelled / timed_out) as a gate failure; the rest check "failure".
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
              [ "${{ needs.workflow-lint.result }}" == "failure" ] || \
-             [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
              [ "${{ needs.backend-tests.result }}" == "failure" ] || \
-             [ "${{ needs.e2e-browser-smoke.result }}" == "failure" ] || \
-             [ "${{ needs.e2e-browser-smoke.result }}" == "cancelled" ] || \
-             [ "${{ needs.e2e-browser-smoke.result }}" == "timed_out" ] || \
-             [ "${{ needs.frontend-tests.result }}" == "failure" ] || \
              [ "${{ needs.proof9-plugin.result }}" == "failure" ] || \
              [ "${{ needs.proof9-plugin.result }}" == "cancelled" ] || \
              [ "${{ needs.proof9-plugin.result }}" == "timed_out" ]; then
@@ -694,11 +334,11 @@ jobs:
   # A red scheduled run has no PR to be red on (#1239): open or update one
   # issue instead. `failure()` looks at everything in `needs`, so the list is
   # every job that ends a scheduled run — test-summary aggregates the gated
-  # ones, and the two nightly-only jobs are listed alongside it because it
-  # deliberately does not need them.
+  # ones, and the nightly-only job is listed alongside it because it
+  # deliberately does not need it.
   report-scheduled-failure:
     name: Report scheduled failure
-    needs: [test-summary, e2e-browser-full, e2e-backend-tests]
+    needs: [test-summary, e2e-backend-tests]
     if: failure() && github.event_name == 'schedule'
     uses: ./.github/workflows/scheduled-failure-issue.yml
     permissions:

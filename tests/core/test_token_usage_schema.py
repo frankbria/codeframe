@@ -8,7 +8,7 @@ cost/token data was dropped. These tests lock in that:
 1. `create_or_load_workspace()` creates `token_usage` with the columns the
    repository INSERT expects and indexes on timestamp/task_id/agent_id.
 2. A fresh workspace can save a record and read it back through the same
-   `Database` path react_agent uses in production.
+   `TokenRepository` path react_agent uses in production.
 3. `_ensure_schema_upgrades()` adds the table to a pre-existing DB that lacks it.
 """
 
@@ -23,7 +23,8 @@ from codeframe.core.workspace import (
     _ensure_schema_upgrades,
     create_or_load_workspace,
 )
-from codeframe.platform_store.database import Database
+
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 
 pytestmark = pytest.mark.v2
 
@@ -79,10 +80,9 @@ class TestTokenUsageSchema:
 
     def test_save_and_read_roundtrip(self, temp_repo: Path):
         """Mirrors react_agent's production path: create_or_load_workspace then
-        a Database over the same db_path saves and reads a record with no error."""
+        a TokenRepository over the same db_path saves and reads a record with no error."""
         ws = create_or_load_workspace(temp_repo)
-        db = Database(str(ws.db_path))
-        db.initialize()
+        db = TokenRepository(sync_conn=sqlite3.connect(str(ws.db_path)))
         try:
             usage = TokenUsage(
                 task_id="a1b2c3d4-uuid-task",  # v2 UUID string, not int
@@ -98,7 +98,7 @@ class TestTokenUsageSchema:
             db.save_token_usage(usage)
             rows = db.get_workspace_token_usage()
         finally:
-            db.close()
+            db.conn.close()
 
         assert len(rows) == 1
         assert rows[0]["task_id"] == "a1b2c3d4-uuid-task"

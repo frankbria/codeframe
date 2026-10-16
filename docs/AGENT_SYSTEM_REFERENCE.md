@@ -29,9 +29,7 @@ Detailed reference for CodeFRAME's agent system. Loaded on-demand — not requir
 | Diagnostics | `core/diagnostics.py` | Failed task analysis |
 | Diagnostic Agent | `core/diagnostic_agent.py` | AI-powered task diagnosis |
 | Credentials | `core/credentials.py` | API key and credential management |
-| Event Publisher | `core/streaming.py` | Real-time SSE event distribution |
-| API Key Service | `auth/api_key_service.py` | API key CRUD and validation |
-| Rate Limiter | `lib/rate_limiter.py` | Per-endpoint rate limiting |
+| Event Publisher | `core/streaming.py` | Real-time run output streaming (`cf work follow`) |
 
 ---
 
@@ -130,19 +128,3 @@ Recovery:
 - **FAIL**: task transitions directly to FAILED
 
 Config: `agent_budget.stall_timeout_s` in `.codeframe/config.yaml` (0 = disabled)
-
----
-
-## Server Architecture (Phase 2)
-
-Pattern: Thin adapter over core — server routes delegate to `core.*` modules.
-
-```
-CLI (typer) ─┬── core.* ─── adapters.*
-             │
-Server (fastapi) ─┘
-```
-
-The 21 v2 REST router modules are: `batches_v2`, `blockers_v2`, `checkpoints_v2`, `costs_v2`, `diagnose_v2`, `discovery_v2`, `environment_v2`, `events_v2`, `gates_v2`, `git_v2`, `github_integrations_v2`, `interactive_sessions_v2`, `pr_v2`, `prd_v2`, `proof_v2`, `review_v2`, `schedule_v2`, `settings_v2`, `tasks_v2`, `templates_v2`, `workspace_v2` — plus the two WebSocket routers `session_chat_ws` and `terminal_ws`. (The API-key routes live in `codeframe/auth/api_key_router.py`, not under `routers/`.)
-
-See `docs/PHASE_2_DEVELOPER_GUIDE.md` for full router details.

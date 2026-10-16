@@ -112,7 +112,6 @@ RUN: dict[str, list[str]] = {
 #: text in the argument itself.
 EXEMPT: dict[str, str] = {
     "init": "creates a workspace; renders the path, not stored user text",
-    "serve": "starts a long-running server",
     "prd add": "reads a file argument; the stored text is covered by `prd show`",
     "prd update": "same store as `prd add`",
     "prd delete": "destroys the fixture the other prd commands render",
@@ -165,25 +164,11 @@ EXEMPT: dict[str, str] = {
     "pr merge": "GitHub network call",
     "pr close": "GitHub network call",
     "pr status": "GitHub network call",
-    "auth login": "server network call",
-    "auth logout": "server network call",
-    "auth register": "server network call",
-    "auth whoami": "server network call",
     "auth setup": "writes the machine-wide credential store",
     "auth list": "reads the machine-wide credential store, not workspace text",
     "auth validate": "provider network call",
     "auth rotate": "writes the machine-wide credential store",
     "auth remove": "writes the machine-wide credential store",
-    "auth api-key-create": "writes the machine-wide platform store",
-    "auth api-key-list": "reads the machine-wide platform store",
-    "auth api-key-revoke": "writes the machine-wide platform store",
-    "auth api-key-rotate": "writes the machine-wide platform store",
-    "auth set-password":
-        "writes the machine-wide platform store",
-    "auth user-create": "writes the machine-wide platform store",
-    "auth deactivate": "writes the machine-wide platform store",
-    "auth activate": "writes the machine-wide platform store",
-    "auth user-list": "reads the machine-wide platform store",
 }
 
 

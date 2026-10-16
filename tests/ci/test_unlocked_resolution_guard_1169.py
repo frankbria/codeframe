@@ -78,14 +78,13 @@ def test_the_release_is_gated_on_it():
     )
 
 
-def test_it_runs_the_cli_suite_and_the_mock_lifecycle_against_the_resolved_env():
+def test_it_runs_the_cli_suite_against_the_resolved_env():
     """#1268: typer 0.27 broke `cf proof capture` while `cf --help` still ran."""
     runs = " ".join(s.get("run", "") for s in _steps(_load(UNLOCKED)))
     for target in (
         "tests/cli",
         "tests/core/test_tui_dashboard.py",
         "tests/core/test_cli_validators.py",
-        "tests/lifecycle/test_api_lifecycle.py",
         "tests/adapters/test_request_shape_1267.py",  # wire-level OpenAIProvider
     ):
         assert target in runs, f"{target} is not run against the unlocked resolution"

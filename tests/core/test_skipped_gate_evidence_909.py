@@ -240,14 +240,6 @@ def test_the_note_reaches_the_gates_completed_event(tmp_path, monkeypatch):
     ), f"event payload dropped the diagnostic: {captured[-1]}"
 
 
-def test_the_note_reaches_the_v2_api_response():
-    """The API response schema carried only `checks`."""
-    from codeframe.ui.routers.gates_v2 import _result_to_response
-
-    response = _result_to_response(_result_with_note())
-
-    assert any("Dependency installation failed" in n for n in response.notes)
-
 
 def test_the_note_reaches_the_cli(tmp_path, monkeypatch):
     """`cf review` printed only checks, so the diagnostic was invisible."""

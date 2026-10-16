@@ -2,7 +2,7 @@
 
 This module provides two configuration systems:
 1. Process config (environment-driven): GlobalConfig, read from the environment
-   and ``.env`` — secrets, rate limits, CORS, log level.
+   and ``.env`` — secrets and log level.
 2. v2 environment config (YAML-based): EnvironmentConfig
 
 v2 environment config is stored in .codeframe/config.yaml and controls:
@@ -626,12 +626,6 @@ class GlobalConfig(BaseSettings):
     # Database configuration
     database_path: str = Field(".codeframe/platform.db", alias="DATABASE_PATH")
 
-    # Status Server configuration
-    # Loopback by default (#935): the API exposes SQLite state, workspace
-    # file access and agent execution. Set API_HOST=0.0.0.0 to expose it.
-    api_host: str = Field("127.0.0.1", alias="API_HOST")
-    api_port: int = Field(8080, alias="API_PORT")
-
     # Logging configuration
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     log_file: Optional[str] = Field(".codeframe/logs/codeframe.log", alias="LOG_FILE")
@@ -648,20 +642,6 @@ class GlobalConfig(BaseSettings):
     github_token: Optional[str] = Field(None, alias="GITHUB_TOKEN")
     github_repo: Optional[str] = Field(None, alias="GITHUB_REPO")  # Format: "owner/repo"
 
-    # Rate Limiting Configuration
-    rate_limit_enabled: bool = Field(True, alias="RATE_LIMIT_ENABLED")
-    rate_limit_storage: str = Field("memory", alias="RATE_LIMIT_STORAGE")
-    redis_url: Optional[str] = Field(None, alias="REDIS_URL")
-    rate_limit_auth: str = Field("10/minute", alias="RATE_LIMIT_AUTH")
-    rate_limit_standard: str = Field("100/minute", alias="RATE_LIMIT_STANDARD")
-    rate_limit_ai: str = Field("20/minute", alias="RATE_LIMIT_AI")
-    # Comma-separated list of trusted proxy IPs/CIDRs (e.g., "10.0.0.0/8,172.16.0.0/12").
-    # Defaults to loopback, where the documented Caddy proxy connects from
-    # (#1274); set it to an empty value to trust nothing.
-    rate_limit_trusted_proxies: str = Field(
-        "127.0.0.0/8,::1", alias="RATE_LIMIT_TRUSTED_PROXIES"
-    )
-
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
@@ -675,23 +655,6 @@ class GlobalConfig(BaseSettings):
         if v_upper not in allowed:
             raise ValueError(f"LOG_LEVEL must be one of {allowed}, got: {v}")
         return v_upper
-
-    @field_validator("api_port")
-    @classmethod
-    def validate_port(cls, v: int) -> int:
-        """Validate port is in valid range."""
-        if not (1 <= v <= 65535):
-            raise ValueError(f"API_PORT must be between 1 and 65535, got: {v}")
-        return v
-
-    @field_validator("rate_limit_storage")
-    @classmethod
-    def validate_rate_limit_storage(cls, v: str) -> str:
-        """Validate rate limit storage is valid."""
-        allowed = ["memory", "redis"]
-        if v not in allowed:
-            raise ValueError(f"RATE_LIMIT_STORAGE must be one of {allowed}, got: {v}")
-        return v
 
 
 def load_environment(env_file: str = ".env") -> None:

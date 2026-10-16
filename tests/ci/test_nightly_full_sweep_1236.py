@@ -33,7 +33,7 @@ def test_the_suite_can_be_dispatched_by_hand():
     )
 
 
-@pytest.mark.parametrize("job", ["e2e-browser-full", "e2e-backend-tests"])
+@pytest.mark.parametrize("job", ["e2e-backend-tests"])
 def test_the_nightly_only_jobs_also_run_on_a_dispatch(job: str):
     condition = _workflow()["jobs"][job].get("if", "")
     assert "github.event_name == 'schedule'" in condition, (

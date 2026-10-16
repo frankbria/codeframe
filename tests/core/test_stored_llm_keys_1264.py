@@ -283,63 +283,6 @@ class TestCliValidators:
         assert "cf auth setup --provider openai" in capsys.readouterr().out
 
 
-class TestServerRoutesUseThePrincipalsKey:
-    """End to end: save a key in Settings as a signed-in user, then use it."""
-
-    def test_key_saved_in_settings_reaches_prd_refine(self, store_dir, tmp_path, monkeypatch):
-        from fastapi.testclient import TestClient
-
-        from codeframe.core import prd as prd_module
-        from codeframe.core import prd_stress_test
-        from codeframe.platform_store.database import Database
-        from codeframe.ui.dependencies import get_v2_workspace
-        from tests.conftest import create_test_jwt_token
-        from tests.ui.test_v2_auth_enforcement import (
-            _build_auth_app,
-            _pop_credential_overrides,
-        )
-
-        app = _build_auth_app(tmp_path, monkeypatch)
-        # Use the real per-user CredentialManager, not the fixture's override.
-        _pop_credential_overrides(app)
-        db = Database(tmp_path / "state.db")
-        db.initialize()
-        db.conn.execute("UPDATE users SET is_superuser = 1 WHERE id = 1")  # key storage is admin-only
-        db.conn.commit()
-        db.close()
-
-        ws = _workspace(tmp_path)
-        record = prd_module.store(ws, "# PRD\n\nBuild a thing.\n" * 20, "PRD", {})
-        app.dependency_overrides[get_v2_workspace] = lambda: ws
-
-        seen = {}
-
-        def _refine(prd_content, ambiguities, provider):
-            seen["api_key"] = provider.api_key
-            return prd_content + "\n\n## Resolved\nDone.\n"
-
-        monkeypatch.setattr(prd_stress_test, "resolve_ambiguities_into_prd", _refine)
-        client = TestClient(app)
-        headers = {"Authorization": f"Bearer {create_test_jwt_token(1)}"}
-        try:
-            saved = client.put(
-                "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": USER}, headers=headers
-            )
-            assert saved.status_code == 200, saved.text
-            resp = client.post(
-                "/api/v2/prd/stress-test/refine",
-                json={
-                    "prd_id": record.id,
-                    "answers": [{"label": "X", "questions": ["?"], "answer": "y"}],
-                },
-                headers=headers,
-            )
-        finally:
-            app.dependency_overrides.pop(get_v2_workspace, None)
-        assert resp.status_code == 200, resp.text
-        assert seen["api_key"] == USER
-
-
 def test_codex_counts_a_stored_openai_key_as_authenticated(store_dir, tmp_path, monkeypatch):
     # The delegated env forwards the stored key, so the pre-check must accept it.
     from codeframe.core.adapters.codex import CodexAdapter

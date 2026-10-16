@@ -136,7 +136,6 @@ When resetting context, provide the new AI session with:
 **Architecture Notes:**
 - Using async/await throughout
 - SQLite for persistence
-- FastAPI for REST endpoints
 ```
 
 ## Verification Process
@@ -201,7 +200,7 @@ Use `tests/test_template.py` as a reference for:
 
 ❌ **Do NOT test:**
 - Third-party library internals
-- Framework behavior (e.g., FastAPI routing)
+- Framework behavior (e.g., Typer argument parsing)
 - Getters/setters with no logic
 
 ## Quality Ratchet Integration

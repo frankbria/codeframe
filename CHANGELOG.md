@@ -7,6 +7,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Removed
+
+- **The web UI, the server, and everything only they used** (#1477). The
+  Next.js web UI, the FastAPI server (`cf serve`), the auth layer and its
+  `cf auth` server commands (`login`, `logout`, `register`, `whoami`,
+  `api-key-*`, and user management: `set-password`, `user-create`,
+  `activate`, `deactivate`, `user-list`), rate limiting, the Docker/compose
+  deploy and its workflows, and the browser E2E suite are gone. The `cf` CLI
+  and the proof9 Claude Code plugin are the product. `cf auth setup`, `list`,
+  `validate`, `rotate` and `remove` remain for credentials; token tracking and
+  `cf stats` are unchanged.
+
 ## [0.9.7] - 2026-10-16
 
 ### Added

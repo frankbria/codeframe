@@ -443,12 +443,6 @@ def init(
         raise typer.Exit(1)
 
     try:
-        # A state.db with no workspace row (a pre-#1287 serve-first control
-        # plane) is not an existing workspace. Migrate it first (#1376), before
-        # the probe below loads it as one and stamps its schema version.
-        from codeframe.platform_store.database import migrate_legacy_control_plane
-
-        migrate_legacy_control_plane(repo_path / ".codeframe")
         try:
             get_workspace(repo_path)
             already_existed = True
@@ -878,78 +872,6 @@ def review(
         console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         console.print("Run 'codeframe init' to initialize a workspace first.")
         raise typer.Exit(1)
-
-
-#: Bind addresses that accept connections from outside this machine.
-_NON_LOOPBACK_BINDS = {"0.0.0.0", "::", "*", ""}
-
-
-def _warn_if_exposed(host: str) -> None:
-    """Warn when binding beyond loopback, loudly if auth is off (#935).
-
-    The server exposes SQLite state, workspace file access and
-    agent-execution endpoints. Exposing that on a LAN is a deliberate choice;
-    doing it with CODEFRAME_AUTH_REQUIRED=false — which the dev docs suggest —
-    is an unauthenticated remote shell, so that combination gets a stronger
-    warning rather than a quiet default.
-    """
-    if host.strip() not in _NON_LOOPBACK_BINDS:
-        return
-
-    auth_off = os.environ.get("CODEFRAME_AUTH_REQUIRED", "").strip().lower() in {
-        "0", "false", "no", "off",
-    }
-    console.print(
-        f"[yellow]WARNING:[/yellow] binding {escape(host)} accepts connections "
-        "from other machines on your network."
-    )
-    if auth_off:
-        console.print(
-            "[bold red]CODEFRAME_AUTH_REQUIRED is disabled.[/bold red] The API — "
-            "including workspace file access and agent execution — is reachable "
-            "with no credentials. Do not use this combination outside a trusted "
-            "network."
-        )
-
-
-@app.command()
-def serve(
-    port: int = typer.Option(8080, "--port", "-p", help="Port to run server on"),
-    host: str = typer.Option(
-        "127.0.0.1",
-        "--host",
-        help="Host to bind to. Use 0.0.0.0 to expose on the network (see warning).",
-    ),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
-) -> None:
-    """Start the optional FastAPI server (wraps core).
-
-    The server is NOT required for Golden Path commands.
-    It provides the v2 REST API that wraps the same core functions.
-
-    Binds 127.0.0.1 by default (#935). This process exposes SQLite state,
-    workspace file access and agent-execution endpoints, so it is loopback-only
-    until you explicitly ask for otherwise.
-
-    Examples:
-        cf serve
-        cf serve --port 3000
-        cf serve --host 0.0.0.0        # expose on the network — see the warning
-    """
-    import uvicorn
-
-    _warn_if_exposed(host)
-
-    console.print(f"Starting CodeFRAME API server on {escape(host)}:{port}")
-    console.print(f"  Swagger UI: http://localhost:{port}/docs")
-    console.print(f"  ReDoc:      http://localhost:{port}/redoc")
-    console.print("  Press Ctrl+C to stop\n")
-    uvicorn.run(
-        "codeframe.ui.server:app",
-        host=host,
-        port=port,
-        reload=reload,
-    )
 
 
 # =============================================================================

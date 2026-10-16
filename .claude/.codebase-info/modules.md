@@ -14,7 +14,7 @@
 | Blockers & events | `blockers.py`, `blocker_detection.py`, `events.py`, `streaming.py`, `progress.py`, `state_machine.py`, `checkpoints.py`, `artifacts.py` |
 | LLM & cost | `llm_resolution.py`, `llm_json.py`, `usage_recording.py`, `cost_tracker.py`, `spend_limit.py`, `models.py` (incl. `CallType`: add every new `call_type` here) |
 | GitHub | `git.py`, `github_connect_service.py`, `github_issues_service.py`, `github_integration_config.py` |
-| Security & trust | `credentials.py` (keyring + encrypted file store), `api_key_service.py`, `hook_trust.py`, `hooks.py`, `dangerous_commands.py`, `claude_code_guard.py`, `env_provenance.py` |
+| Security & trust | `credentials.py` (keyring + encrypted file store), `hook_trust.py`, `hooks.py`, `dangerous_commands.py`, `claude_code_guard.py`, `env_provenance.py` |
 | Environment | `environment.py`, `installer.py`, `agents_config.py` |
 | Telemetry | `telemetry.py`, `engine_stats.py`, `notifications_config.py` |
 
@@ -23,16 +23,8 @@
 | Package | Purpose |
 |---------|---------|
 | `adapters/llm/` | `LLMProvider` base + Anthropic / OpenAI-compatible / Mock providers |
-| `ui/` | FastAPI app, `dependencies.py` (workspace resolution, `refuse_execution_in_hosted_mode`, shared `get_credential_manager`), routers |
-| `auth/` | `manager.py` (fastapi-users), `dependencies.py` (`require_auth`, `require_scope`), `scopes.py`, `stream_tickets.py` |
-| `platform_store/` | Control-plane DB (`database.py`, `schema_manager.py`) and repositories (api keys, audit, sessions, tokens, workspace registry) |
+| `platform_store/` | `repositories/token_repository.py` — per-workspace `TokenRepository` |
 | `planning/` | `prd_templates.py` (PRD templates), `task_templates.py`, `task_scheduler.py` |
 | `notifications/webhook.py` | Outbound webhook with DNS-pinned SSRF guard |
-| `lib/` | `rate_limiter.py`, `audit_logger.py`, `metrics_tracker.py`, `quality/` (complexity, OWASP, security scanner) |
-
-## Web UI areas (`web-ui/src/components/`)
-
-`prd` (DiscoveryPanel, StressTestModal), `tasks` (TaskBoardView, GitHub import), `execution`,
-`blockers`, `proof`, `review` (PR panel, merge gate UI), `sessions` (chat + terminal), `settings`
-(Agent, API Keys, PROOF9, Integrations, Notifications tabs), `costs`, `layout` (sidebar, auth guard),
-`workspace`, `ui` (Shadcn primitives).
+| `lib/` | `metrics_tracker.py` |
+| `tui/` | Textual dashboard (`cf dashboard`) |

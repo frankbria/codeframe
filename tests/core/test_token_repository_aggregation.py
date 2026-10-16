@@ -23,12 +23,14 @@ import pytest
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.core.workspace import create_or_load_workspace
 from codeframe.lib.metrics_tracker import MetricsTracker
-from codeframe.platform_store.database import Database
+import sqlite3
+
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 
 pytestmark = pytest.mark.v2
 
 
-def _mk(db: Database, *, model: str, inp: int, out: int, cost: float, ts: datetime,
+def _mk(db: TokenRepository, *, model: str, inp: int, out: int, cost: float, ts: datetime,
         task_id: str = "t1", agent_id: str = "a1") -> None:
     db.save_token_usage(
         TokenUsage(
@@ -50,19 +52,18 @@ def db(tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
     ws = create_or_load_workspace(repo)
-    database = Database(str(ws.db_path))
-    database.initialize()
+    database = TokenRepository(sync_conn=sqlite3.connect(str(ws.db_path)))
     now = datetime.now(timezone.utc)
     # Two models, three records; one record 10 days old for window tests.
     _mk(database, model="claude-sonnet-4-5", inp=100, out=50, cost=0.01, ts=now)
     _mk(database, model="claude-sonnet-4-5", inp=200, out=100, cost=0.02, ts=now)
     _mk(database, model="gpt-4o", inp=1000, out=500, cost=0.50, ts=now - timedelta(days=10))
     yield database
-    database.close()
+    database.conn.close()
 
 
 class TestGetCostsByModel:
-    def test_groups_and_sums_per_model(self, db: Database):
+    def test_groups_and_sums_per_model(self, db: TokenRepository):
         rows = db.get_costs_by_model()
         by_model = {r["model_name"]: r for r in rows}
 
@@ -74,41 +75,41 @@ class TestGetCostsByModel:
         assert by_model["gpt-4o"]["input_tokens"] == 1000
         assert by_model["gpt-4o"]["call_count"] == 1
 
-    def test_ordered_by_cost_desc(self, db: Database):
+    def test_ordered_by_cost_desc(self, db: TokenRepository):
         rows = db.get_costs_by_model()
         costs = [r["total_cost_usd"] for r in rows]
         assert costs == sorted(costs, reverse=True)
         assert rows[0]["model_name"] == "gpt-4o"  # 0.50 > 0.03
 
-    def test_window_excludes_old_records(self, db: Database):
+    def test_window_excludes_old_records(self, db: TokenRepository):
         start = datetime.now(timezone.utc) - timedelta(days=1)
         rows = db.get_costs_by_model(start_date=start)
         models = {r["model_name"] for r in rows}
         assert models == {"claude-sonnet-4-5"}  # the 10-day-old gpt-4o row is out
 
-    def test_empty_window_returns_empty(self, db: Database):
+    def test_empty_window_returns_empty(self, db: TokenRepository):
         future = datetime.now(timezone.utc) + timedelta(days=1)
         assert db.get_costs_by_model(start_date=future) == []
 
 
 class TestStreamingIterator:
-    def test_is_a_generator(self, db: Database):
+    def test_is_a_generator(self, db: TokenRepository):
         it = db.get_token_usage_iter()
         assert isinstance(it, GeneratorType)
 
-    def test_yields_all_rows(self, db: Database):
+    def test_yields_all_rows(self, db: TokenRepository):
         rows = list(db.get_token_usage_iter())
         assert len(rows) == 3
         assert all("model_name" in r for r in rows)
 
-    def test_window_filters(self, db: Database):
+    def test_window_filters(self, db: TokenRepository):
         start = datetime.now(timezone.utc) - timedelta(days=1)
         rows = list(db.get_token_usage_iter(start_date=start))
         assert len(rows) == 2  # old gpt-4o excluded
 
 
 class TestWorkspaceCostsTotals:
-    def test_totals_match_sql_rollup(self, db: Database):
+    def test_totals_match_sql_rollup(self, db: TokenRepository):
         tracker = MetricsTracker(db=db)
         result = tracker.get_workspace_costs()
         # 0.01 + 0.02 + 0.50
@@ -117,7 +118,7 @@ class TestWorkspaceCostsTotals:
         assert result["total_tokens"] == 1950
         assert result["total_calls"] == 3
 
-    def test_totals_honour_window(self, db: Database):
+    def test_totals_honour_window(self, db: TokenRepository):
         tracker = MetricsTracker(db=db)
         start = datetime.now(timezone.utc) - timedelta(days=1)
         result = tracker.get_workspace_costs(start_date=start)
@@ -126,14 +127,14 @@ class TestWorkspaceCostsTotals:
 
 
 class TestStreamingExport:
-    def test_csv_streams_iterator_and_counts(self, db: Database, tmp_path: Path):
+    def test_csv_streams_iterator_and_counts(self, db: TokenRepository, tmp_path: Path):
         out = tmp_path / "out.csv"
         n = MetricsTracker.export_to_csv(db.get_token_usage_iter(), str(out))
         assert n == 3
         lines = out.read_text().strip().splitlines()
         assert len(lines) == 4  # header + 3 rows
 
-    def test_json_streams_and_roundtrips(self, db: Database, tmp_path: Path):
+    def test_json_streams_and_roundtrips(self, db: TokenRepository, tmp_path: Path):
         out = tmp_path / "out.json"
         n = MetricsTracker.export_to_json(db.get_token_usage_iter(), str(out))
         assert n == 3

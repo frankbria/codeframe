@@ -2,7 +2,7 @@
 
 *Last Updated: 2026-10-14*
 
-Layer-based Python package plus a separate Next.js app.
+Layer-based Python package plus the proof9 Claude Code plugin.
 
 ```
 codeframe/
@@ -16,28 +16,19 @@ codeframe/
 │   ├── llm/              # anthropic.py, openai.py, mock.py, base.py, errors.py
 │   └── e2b/              # Cloud sandbox (experimental, gated)
 ├── cli/                  # Typer app (app.py) + per-area command modules (*_commands.py)
-├── ui/                   # FastAPI server.py, dependencies.py, models, routers/*_v2.py, *_ws.py
-├── auth/                 # JWT/API-key auth, scopes, stream tickets, routers
-├── platform_store/       # Control-plane DB: database.py, schema_manager.py, repositories/
+├── platform_store/       # repositories/token_repository.py (per-workspace TokenRepository)
 ├── planning/             # PRD and task templates, task scheduler
 ├── git/                  # github_integration.py
 ├── notifications/        # webhook.py (SSRF-guarded outbound webhooks)
-├── lib/                  # rate_limiter, audit_logger, metrics_tracker, quality/
+├── lib/                  # metrics_tracker.py
 ├── tui/                  # Textual dashboard (cf dashboard)
 ├── agents/               # dependency_resolver.py
 └── templates/            # AGENTS.md.default
 
-web-ui/src/
-├── app/                  # Routes: /, prd, tasks, execution, blockers, proof, review, sessions,
-│                         #   settings, costs, login
-├── components/           # One folder per page area + ui/ (Shadcn) + layout/
-├── hooks/                # useEventSource, useTerminalSocket, useNotifications, useAdminDenied, …
-├── lib/                  # api.ts (axios clients), sseBase.ts, wsBase.ts, auth.ts, …
-├── contexts/, types/, __tests__/
+proof9/                   # Claude Code plugin: hooks/, tests/, README.md
 
-tests/                    # core/, cli/, ui/, adapters/, integration/, lifecycle/, e2e/, ci/, …
-docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, CLI/WEB_UI guides, images/
+tests/                    # core/, cli/, adapters/, integration/, lifecycle/, e2e/, ci/, …
+docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, CLI guide, images/
 scripts/                  # lifecycle runner, quickstart-cleanroom/, ci/ helpers, verify scripts
 site/                     # Static codeframe.sh page (no build, no JS); make-og-image.sh rebuilds the card
-deploy/                   # Caddyfile.example, backup-db.sh, README.md (runbook)
 ```

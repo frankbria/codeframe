@@ -11,8 +11,6 @@ behaviour of a surface disagreed:
    the cancellation latch could not fire inside a goal's walk — AC4.
 """
 
-import asyncio
-import time
 
 import pytest
 
@@ -127,70 +125,3 @@ class TestCliReportsTheFailure:
         assert not isinstance(result.exception, StressTestError)
 
 
-class TestDisconnectLatchFiresDuringAGoal:
-    """Drives the real ``_stress_test_event_stream`` with a stand-in core
-    generator that decomposes one long 'goal' in a worker thread, polling
-    ``is_cancelled`` as the real recursion does. The route must flip the latch
-    while that thread is still running — not only between yielded events.
-    """
-
-    @pytest.mark.asyncio
-    async def test_the_latch_flips_mid_goal(self, monkeypatch, tmp_path):
-        from codeframe.core import prd as prd_module
-        from codeframe.core.workspace import create_or_load_workspace
-        from codeframe.ui.routers import prd_v2
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        workspace = create_or_load_workspace(repo, tech_stack="python")
-        prd_module.store(workspace, "# Demo PRD\nSome goals.", title="Demo PRD")
-
-        monkeypatch.setattr(prd_v2, "_resolve_llm_provider", lambda ws, user_id=None: object())
-
-        observed = {"cancelled_at_node": None}
-
-        async def _fake_stream(content, provider, max_depth=3, is_cancelled=None):
-            yield {"type": "goals_extracted", "goals": ["one long goal"]}
-
-            def _walk():
-                # Stands in for recursive_decompose: many nodes, one thread,
-                # no yields back to the loop until the whole goal is done.
-                for node in range(200):
-                    if is_cancelled is not None and is_cancelled():
-                        return node
-                    time.sleep(0.01)
-                return None
-
-            observed["cancelled_at_node"] = await asyncio.to_thread(_walk)
-            yield {"type": "goal_analyzed", "goal": "one long goal"}
-
-        monkeypatch.setattr(
-            "codeframe.core.prd_stress_test.stress_test_prd_stream", _fake_stream
-        )
-
-        class _Request:
-            """Stays connected past the startup poll and the first yielded
-            event, then drops — so the only thing that can notice is the
-            concurrent poller running while the goal decomposes.
-            """
-
-            def __init__(self):
-                self.polls = 0
-
-            async def is_disconnected(self):
-                self.polls += 1
-                return self.polls >= 3
-
-        frames = []
-        async for frame in prd_v2._stress_test_event_stream(
-            workspace, max_depth=3, request=_Request()
-        ):
-            frames.append(frame)
-
-        node = observed["cancelled_at_node"]
-        assert node is not None, (
-            "the walk ran to completion — the latch never fired inside the goal"
-        )
-        assert node < 200
-        # The goal never finished, so its goal_analyzed frame was never sent.
-        assert not any("goal_analyzed" in f for f in frames)

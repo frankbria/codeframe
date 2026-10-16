@@ -64,38 +64,6 @@ class TestDuplicateExternalUrlDoesNotBrickTheWorkspace:
         assert {"first", "second"} <= titles, "a task was deleted to build an index"
 
 
-class TestStatsDoesNotContaminateTheWorkspaceDb:
-    def test_no_control_plane_tables_appear(self, tmp_path):
-        from codeframe.platform_store.database import Database
-
-        create_or_load_workspace(tmp_path)
-        db = Database(tmp_path / ".codeframe" / "state.db")
-        db.connect_readonly()
-
-        tables = {
-            r[0]
-            for r in db.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-
-        assert not (tables & {"users", "api_keys", "audit_logs"}), (
-            "control-plane tables were injected into the workspace DB"
-        )
-
-    def test_stats_uses_the_readonly_path(self):
-        import inspect
-
-        from codeframe.cli import stats_commands
-
-        source = inspect.getsource(stats_commands)
-        code = "\n".join(line.split("#")[0] for line in source.splitlines())
-
-        assert "connect_readonly()" in code
-        assert "db.initialize()" not in code, (
-            "still running the control-plane SchemaManager on a workspace DB"
-        )
-
 
 class TestTaskDeleteCleansUpChildren:
     """Raised by the PR review as a major: enabling FK enforcement with no

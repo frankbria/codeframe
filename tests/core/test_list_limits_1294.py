@@ -114,12 +114,6 @@ def test_checkpoint_snapshots_every_task_and_blocker(ws):
     assert len(snap["blockers"]) == OVER_1000
 
 
-def test_schedule_sees_every_task(ws):
-    from codeframe.core import schedule
-
-    _make_tasks(ws, OVER_1000)
-    assert len(schedule.get_schedule(ws).task_assignments) == OVER_1000
-
 
 def test_blocker_listing_returns_every_blocker_by_default(ws):
     from codeframe.core import blockers

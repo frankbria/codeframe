@@ -1,43 +1,11 @@
 """Shared pytest fixtures for CodeFRAME tests."""
 
-import jwt
 import os
 import tempfile
 import uuid
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Generator
 import pytest
-
-# Disable the global default rate limiter for the whole test suite. The
-# @rate_limit_* decorators bind the limiter at ROUTER IMPORT time and the limits
-# library keeps counters in a process-shared in-memory store, so the fixed
-# ``ip:testclient`` bucket is shared across every test and exhausts in the full
-# suite (notably the AI bucket: connect/import are 20/min) — causing spurious
-# 429s. Setting this BEFORE any router is imported makes every route import
-# unwrapped. Tests that specifically exercise rate limiting construct their own
-# explicit Limiter, so they are unaffected; ``setdefault`` lets an explicit
-# environment override win.
-os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
-
-# Run the existing TestClient suites with auth disabled (issue #336). Auth is
-# secure-by-default (CODEFRAME_AUTH_REQUIRED defaults ON), but the legacy suites
-# call v2 routes without credentials. Setting this BEFORE the app is imported
-# opts them out. The dedicated enforcement tests (tests/ui/test_v2_auth_
-# enforcement.py) explicitly monkeypatch it back to "true". ``setdefault`` lets
-# an explicit environment override win.
-os.environ.setdefault("CODEFRAME_AUTH_REQUIRED", "false")
-
-# The lifespan refuses to start when auth is enforced and no workspace allowlist
-# is configured (issue #896). Tests build workspaces under per-test ``tmp_path``
-# dirs, so there is no single WORKSPACE_ROOT that could contain them all —
-# pinning one would break every fixture that uses an arbitrary temp directory.
-# Opt the suite into the documented "no allowlist" escape hatch instead, which
-# is the behaviour these tests already assumed. Same pattern as the auth
-# setdefault above: tests that exercise the guard (tests/ui/test_workspace_root_
-# startup.py) set or delete the variable explicitly via monkeypatch, and
-# ``setdefault`` lets an explicit environment override win.
-os.environ.setdefault("CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES", "1")
 
 # Telemetry is opt-in (issue #616), but force it off for the whole suite so no
 # test — including subprocess-based lifecycle tests, which inherit the env —
@@ -72,9 +40,6 @@ collect_ignore: list[str] = []
 # SCOPE — what this guard does NOT cover. Several call sites build a
 # ``.codeframe`` path from cwd directly and never reach ``_get_state_dir``:
 #
-#   platform_store.database.default_database_path   control-plane DB default
-#       (cwd/.codeframe/platform.db; used by ui/server.py, auth/manager.py and
-#       cli/auth_commands.py — #1287)
 #   codeframe/core/config.py:466,712     per-workspace config dir
 #
 # Those are the paths that *wrote* the ambient state.db in the first place.
@@ -147,52 +112,6 @@ def forbid_ambient_workspace(monkeypatch):
         return state_dir
 
     monkeypatch.setattr(_workspace_module, "_get_state_dir", guarded_get_state_dir)
-
-
-def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
-    """Create a JWT token for testing.
-
-    This is a shared helper function for creating test authentication tokens.
-    Can be imported by any test module.
-
-    Args:
-        user_id: User ID to include in the token (default: 1)
-        secret: JWT secret (uses default from auth manager if not provided)
-
-    Returns:
-        JWT token string
-    """
-    from codeframe.auth.manager import SECRET, jwt_lifetime_seconds
-
-    if secret is None:
-        secret = SECRET
-
-    payload = {
-        "sub": str(user_id),
-        "aud": ["fastapi-users:auth"],
-        "exp": datetime.now(timezone.utc) + timedelta(seconds=jwt_lifetime_seconds()),
-    }
-    return jwt.encode(payload, secret, algorithm="HS256")
-
-
-def setup_test_user(db, user_id: int = 1) -> None:
-    """Create a test user in the database.
-
-    Args:
-        db: Database instance
-        user_id: User ID to create (default: 1)
-    """
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO users (
-            id, email, name, hashed_password,
-            is_active, is_superuser, is_verified, email_verified
-        )
-        VALUES (?, 'test@example.com', 'Test User', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1)
-        """,
-        (user_id,),
-    )
-    db.conn.commit()
 
 
 @pytest.fixture
@@ -491,16 +410,3 @@ def pytest_runtest_setup(item):
     if "requires_api_key" in [marker.name for marker in item.iter_markers()]:
         if not os.getenv("ANTHROPIC_API_KEY") and not os.getenv("OPENAI_API_KEY"):
             pytest.skip("Requires real API key (not available in environment)")
-
-
-def pytest_sessionfinish(session, exitstatus):
-    """Clean up after all tests complete.
-
-    This ensures any cached database engines are closed properly
-    to prevent hanging on exit.
-    """
-    try:
-        from codeframe.auth.manager import reset_auth_engine
-        reset_auth_engine()
-    except ImportError:
-        pass  # Module not available, nothing to clean up

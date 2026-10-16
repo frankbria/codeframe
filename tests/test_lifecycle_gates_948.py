@@ -16,7 +16,6 @@ These are meta-tests: they assert on the repository's own gate configuration,
 which is where the defect lives. They run in the default CI gate.
 """
 
-import ast
 import configparser
 import subprocess
 import sys
@@ -58,23 +57,22 @@ def _e2e_backend_job() -> dict:
 
 
 class TestEveryAdvertisedModeIsReal:
-    """AC1, inverted. #948 wrote this class to prove `api` and `web` FAILED
-    rather than reporting success for a suite that did not exist. #1147 made
-    `api` real; #1068 makes `web` real. So the assertion flips: every mode the
-    help text offers must now resolve to a suite, and a typo must still be
-    rejected — those two are different failures and a caller wrapping this
-    script has to tell them apart.
+    """AC1. Every mode the help text offers must resolve to a suite, and any
+    other mode must be refused rather than report success for nothing. `api`
+    and `web` were real until the server and web UI went (#1477); they are
+    refused now, exactly like a typo.
     """
 
-    @pytest.mark.parametrize("mode", ["cli", "api", "web", "all"])
+    @pytest.mark.parametrize("mode", ["cli"])
     def test_the_mode_resolves_to_a_real_suite(self, mode: str):
         proc = _run_lifecycle("--mode", mode)
 
         assert proc.returncode == 0, proc.stderr
         assert "not implemented" not in proc.stderr.lower(), proc.stderr
 
-    def test_a_typo_is_still_rejected(self):
-        assert _run_lifecycle("--mode", "banana").returncode != 0
+    @pytest.mark.parametrize("mode", ["banana", "api", "web", "all"])
+    def test_any_other_mode_is_rejected(self, mode: str):
+        assert _run_lifecycle("--mode", mode).returncode != 0
 
     def test_cli_mode_runs_the_paid_suite(self):
         proc = _run_lifecycle("--mode", "cli")
@@ -82,51 +80,6 @@ class TestEveryAdvertisedModeIsReal:
         assert "test_cli_lifecycle.py" in proc.stdout
         assert "-m lifecycle" in proc.stdout
 
-    def test_api_mode_is_implemented_now(self):
-        """#1147: `api` resolves to a real suite."""
-        proc = _run_lifecycle("--mode", "api")
-
-        assert proc.returncode == 0, proc.stderr
-        assert "test_api_lifecycle.py" in proc.stdout
-
-    def test_web_mode_is_implemented_now(self):
-        """#1068: `web` resolves to the browser spec, run by Playwright rather
-        than pytest — the reason it needed its own branch."""
-        proc = _run_lifecycle("--mode", "web")
-
-        assert proc.returncode == 0, proc.stderr
-        assert "lifecycle.spec.ts" in proc.stdout
-        assert "playwright" in proc.stdout.lower()
-        assert "pytest" not in proc.stdout, (
-            "web has no pytest leg; running one against a path with no tests "
-            "is how a mode reports success for nothing (#948)"
-        )
-
-    @pytest.mark.parametrize("mode", ["api", "web"])
-    def test_the_free_modes_need_no_api_key(self, mode: str):
-        """Both run on the mock provider. That is what lets CI run them on
-        every PR, where the paid cli mode cannot."""
-        proc = _run_lifecycle("--mode", mode, drop_api_key=True)
-
-        assert proc.returncode == 0, proc.stderr
-        assert "ANTHROPIC_API_KEY" not in proc.stderr
-
-    def test_all_runs_both_engines(self):
-        """`all` must not silently drop the browser half."""
-        proc = _run_lifecycle("--mode", "all")
-
-        assert proc.returncode == 0, proc.stderr
-        assert "pytest" in proc.stdout
-        assert "playwright" in proc.stdout.lower()
-
-    def test_api_mode_selects_tests_rather_than_silently_matching_none(self):
-        """pytest.ini defaults to `-m "not lifecycle"`, and the script used to
-        pass `-m lifecycle` for every mode. With the api suite deliberately
-        unmarked, that combination selects ZERO tests and exits 0 — exactly the
-        silent success #948 removed the stubs for."""
-        proc = _run_lifecycle("--mode", "api")
-
-        assert "not lifecycle" in proc.stdout
 
     def test_the_help_text_offers_every_working_mode(self):
         proc = subprocess.run(
@@ -137,9 +90,9 @@ class TestEveryAdvertisedModeIsReal:
             timeout=30,
         )
 
-        assert "--mode cli|api|web|all" in proc.stdout, (
-            "every advertised mode is implemented now; the help text should "
-            "say so"
+        assert "--mode cli" in proc.stdout
+        assert "api" not in proc.stdout.split("--mode", 1)[1].split("\n", 1)[0], (
+            "the help text must not offer a mode that was removed"
         )
         assert "not implemented" not in proc.stdout.lower()
 
@@ -148,57 +101,10 @@ class TestNoAdvertisedModeCollectsOnlySkips:
     """AC1's second half, measured rather than assumed."""
 
     def test_the_python_web_stub_is_still_gone(self):
-        """The web lifecycle came back as a Playwright spec, NOT as the pytest
-        file #948 deleted. If that filename reappears, something recreated the
-        stub rather than using the browser harness."""
+        """#948 deleted this stub. If the filename reappears, something
+        recreated a suite for a surface that no longer exists (#1477)."""
         assert not (REPO_ROOT / "tests" / "lifecycle" / "test_web_lifecycle.py").exists()
 
-    def test_the_browser_lifecycle_spec_exists_and_is_tagged(self):
-        """#1068's web half. The tag is how scripts/lifecycle and the CI job
-        select it — an untagged spec silently runs in neither."""
-        spec = (REPO_ROOT / "tests" / "e2e" / "lifecycle.spec.ts").read_text()
-
-        assert "@lifecycle" in spec
-        assert spec.count("test(") >= 2, "too thin to be a lifecycle suite"
-
-    def test_ci_runs_the_browser_lifecycle_spec(self):
-        """It is free and takes seconds, so it belongs on every PR. A spec that
-        only ever ran locally is the same gap #948 was about."""
-        workflow = yaml.safe_load(WORKFLOW.read_text())
-        steps = [
-            step.get("run", "")
-            for job in workflow["jobs"].values()
-            for step in job.get("steps", [])
-        ]
-
-        assert any("@lifecycle" in run for run in steps), (
-            "no CI step selects the browser lifecycle spec"
-        )
-
-    def test_the_api_file_is_a_real_suite_not_a_stub(self):
-        """It exists again — so assert it is the opposite of what #948 deleted:
-        real test bodies, not a skipped class of NotImplementedError.
-
-        Parsed, not grepped: the file's own docstring quotes both `NotImplemented
-        Error` and `pytest.mark.skip` while describing the stub it replaces, so a
-        substring check reports the stub it is documenting.
-        """
-        tree = ast.parse(
-            (REPO_ROOT / "tests" / "lifecycle" / "test_api_lifecycle.py").read_text()
-        )
-        tests = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
-        ]
-
-        assert len(tests) >= 3, "too thin to be a lifecycle suite"
-        for node in tests:
-            body = [n for n in node.body if not isinstance(n, ast.Expr)]
-            assert body, f"{node.name} has no body beyond its docstring"
-            assert not any(isinstance(n, ast.Raise) for n in body), (
-                f"{node.name} is still a stub that raises"
-            )
 
     def test_the_remaining_lifecycle_suite_has_real_tests(self):
         """Not `raise NotImplementedError` in a skipped class."""
@@ -222,50 +128,6 @@ class TestNoAdvertisedModeCollectsOnlySkips:
                 f"{path.name} still contains a stub body"
             )
 
-
-class TestTheApiSuiteActuallyRunsInCi:
-    """#1068 AC2: "It runs in CI (free, no ANTHROPIC_API_KEY), not only under
-    scripts/lifecycle."
-
-    It is unmarked on purpose, so the default gate collects it. That only holds
-    while the gate keeps pointing at `tests/` — an `--ignore=tests/lifecycle`
-    added later would take the suite out of CI without failing anything.
-    """
-
-    def _gate_step(self) -> str:
-        workflow = yaml.safe_load(WORKFLOW.read_text())
-        for job in workflow["jobs"].values():
-            for step in job.get("steps", []):
-                run = step.get("run", "")
-                if "pytest tests/" in run and "--ignore=tests/e2e" in run:
-                    return run
-        raise AssertionError("no job runs the default pytest gate")
-
-    def test_the_gate_does_not_ignore_the_lifecycle_directory(self):
-        assert "--ignore=tests/lifecycle" not in self._gate_step()
-
-    def test_the_gate_deselects_only_the_paid_marker(self):
-        """`-m "not lifecycle"` skips the marked (paid) suite. The api suite is
-        unmarked, so it survives — deselecting by path would not."""
-        assert '-m "not lifecycle"' in self._gate_step()
-
-    def test_the_api_suite_is_collected_by_the_gate_selector(self):
-        """Measured, not inferred from the YAML."""
-        proc = subprocess.run(
-            [
-                sys.executable, "-m", "pytest",
-                "--collect-only", "-q",
-                "-m", "not lifecycle",
-                "tests/lifecycle",
-            ],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-
-        assert "test_api_lifecycle" in proc.stdout, proc.stdout[-1500:]
-        assert "test_cli_lifecycle" not in proc.stdout, "the paid suite leaked in"
 
 
 class TestE2eBackendJobIsHonest:

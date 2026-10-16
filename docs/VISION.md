@@ -95,9 +95,9 @@ The audit properties behind that sentence are true today and each can be checked
 
 | Property | Where to check it |
 |---|---|
-| Evidence is SHA-256 checksummed **and bound to the run and gate that produced it**, so a passing artifact cannot be transplanted into another run; a mismatch is a hard tamper state, and the merge gate blocks a SATISFIED requirement whose evidence no longer verifies | `codeframe/core/proof/evidence.py` (`_bound_digest`, `verify_evidence`); `verified` field on `GET /api/v2/proof/runs/{run_id}/evidence` |
+| Evidence is SHA-256 checksummed **and bound to the run and gate that produced it**, so a passing artifact cannot be transplanted into another run; a mismatch is a hard tamper state, and the merge gate blocks a SATISFIED requirement whose evidence no longer verifies | `codeframe/core/proof/evidence.py` (`_bound_digest`, `verify_evidence`); `cf proof export` |
 | A run that verified nothing is **reported as vacuous**, not as a green pass | `ProofRun.vacuous_pass` (`codeframe/core/proof/models.py`); the proof report in `cf pr create` reads "verified nothing (no gate ran)"; `cf proof run` exits 2 when gates were disabled or a requirement has no obligations |
-| A waiver records **who** (`approved_by`, taken from the authenticated principal or the OS user -- never from the request body), **why** (a required reason) and, when given, **until when** (an expiry date, after which the waiver blocks the merge again) | `cf proof waive <REQ> --reason "..." --expires YYYY-MM-DD`; `cf proof show <REQ>`; `ledger.waiver_expired` |
+| A waiver records **who** (`approved_by`, taken from the OS user, never from a flag the caller types), **why** (a required reason) and, when given, **until when** (an expiry date, after which the waiver blocks the merge again) | `cf proof waive <REQ> --reason "..." --expires YYYY-MM-DD`; `cf proof show <REQ>`; `ledger.waiver_expired` |
 | Verification is a **tool's exit code, not an LLM's opinion**: each obligation's named tests run in their own `pytest` subprocess (a test that does not exist fails the obligation), UNIT/CONTRACT fall back to the whole suite when none is named, SEC also runs `bandit`, and a tool that did not run is not a pass; an obligation with nothing runnable is reported UNVERIFIABLE, never counted as a pass | `_run_gate` and `_GATE_TO_CORE` in `codeframe/core/proof/runner.py`; `cf proof run` |
 | Obligations are **scoped**: a requirement is re-checked only when a change intersects its routes, files, APIs or components, and the merge gate is scoped to the PR's changed files | `codeframe/core/proof/scope.py` (`intersects`); `cf proof run`; `cf pr merge` |
 
@@ -106,7 +106,7 @@ The audit properties behind that sentence are true today and each can be checked
 The SHIP layer connects verified code to production:
 
 - Pull requests carry a proof report showing which obligations passed, which were waived, and what evidence was produced.
-- Merge is gated on PROOF9 pass — enforced at both the merge API and `cf pr merge`; open (non-waived) requirements block the merge unless a human supplies an explicit, audited override (actor + reason recorded).
+- Merge is gated on PROOF9 pass — enforced by `cf pr merge`; open (non-waived) requirements block the merge unless a human supplies an explicit, audited override (actor + reason recorded).
 - Deployment hooks run post-merge.
 - If a glitch is found after deployment, the capture loop feeds it back to PROVE, which generates a new REQ, which is enforced on every subsequent build.
 
@@ -162,7 +162,7 @@ The precise version of that last link: AI review tools persist reviewer preferen
 
 **Compounding over one-shot.** Every interaction should make the system slightly better. A glitch captured becomes a permanent proof obligation. A successful engine run updates performance stats. A resolved ambiguity refines the PRD. The system learns.
 
-**CLI-first, UI-optional.** The CLI is the source of truth. The web dashboard is a view over CLI state, not a separate system. If it cannot be done from the CLI, it should not be done.
+**CLI-first, UI-optional.** The CLI is the source of truth. The `cf dashboard` TUI and the proof9 Claude Code plugin are views over CLI state, not separate systems. If it cannot be done from the CLI, it should not be done.
 
 ---
 

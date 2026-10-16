@@ -132,35 +132,6 @@ class _Connected:
         return False
 
 
-class TestTheStreamNoticesAnOutOfProcessCompletion:
-    def test_a_completion_the_publisher_never_saw_ends_the_stream(self):
-        """A batch subprocess finishes the run; nothing is published here."""
-        from codeframe.core.models import CompletionEvent
-        from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.streaming_utils import event_stream_generator
-
-        checks = {"n": 0}
-
-        def terminal():
-            checks["n"] += 1
-            if checks["n"] < 3:  # live at subscribe time and for a heartbeat
-                return None
-            return CompletionEvent(task_id="t", status="completed", duration_seconds=1.0)
-
-        async def collect():
-            out = []
-            gen = event_stream_generator(
-                "t", EventPublisher(), _Connected(), heartbeat_interval=0.1,
-                after_subscribe=terminal,
-            )
-            async for chunk in gen:
-                out.append(chunk)
-            return out
-
-        chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
-
-        assert any("completion" in c for c in chunks), chunks
-
 
 # ---------------------------------------------------------------------------
 # Review findings
@@ -195,32 +166,6 @@ class TestReviewFindings:
 
         log.write("late line\n")  # must not raise
 
-    def test_a_failing_recheck_does_not_end_a_live_stream(self):
-        from codeframe.core.models import CompletionEvent
-        from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.streaming_utils import event_stream_generator
-
-        checks = {"n": 0}
-
-        def flaky():
-            checks["n"] += 1
-            if checks["n"] == 2:
-                raise RuntimeError("database is locked")
-            if checks["n"] < 4:
-                return None
-            return CompletionEvent(task_id="t", status="completed", duration_seconds=1.0)
-
-        async def collect():
-            out = []
-            async for chunk in event_stream_generator(
-                "t", EventPublisher(), _Connected(), heartbeat_interval=0.1,
-                after_subscribe=flaky,
-            ):
-                out.append(chunk)
-            return out
-
-        chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
-        assert any("completion" in c for c in chunks)
 
     def test_codex_agent_messages_reach_output_log(self, ws, monkeypatch):
         from codeframe.core import engine_registry
@@ -282,49 +227,4 @@ class TestClaudeReviewFindings:
             )]
 
         assert asyncio.run(collect()) == ["final line\n"]
-
-    def test_the_output_stream_ends_when_the_run_has(self, ws):
-        """GET /tasks/{id}/output polled a finished run for up to 5 minutes."""
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient
-
-        from codeframe.ui.dependencies import get_v2_workspace
-        from codeframe.ui.routers import tasks_v2
-
-        task, run = _running(ws)
-        log = streaming.RunOutputLogger(ws, run.id)
-        log.write("all done\n")
-        log.close()
-        runtime.complete_run(ws, run.id)
-        app = FastAPI()
-        app.include_router(tasks_v2.router)
-        app.dependency_overrides[get_v2_workspace] = lambda: ws
-        start = time.monotonic()
-
-        response = TestClient(app).get(f"/api/v2/tasks/{task.id}/output")
-
-        assert time.monotonic() - start < 10, "the stream kept polling a finished run"
-        assert "all done" in response.text and "event: done" in response.text
-
-    def test_a_failing_initial_check_does_not_end_the_stream(self):
-        from codeframe.core.models import CompletionEvent
-        from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.streaming_utils import event_stream_generator
-
-        checks = {"n": 0}
-
-        def flaky():
-            checks["n"] += 1
-            if checks["n"] == 1:
-                raise RuntimeError("database is locked")  # the subscribe-time check
-            return CompletionEvent(task_id="t", status="completed", duration_seconds=1.0)
-
-        async def collect():
-            return [c async for c in event_stream_generator(
-                "t", EventPublisher(), _Connected(), heartbeat_interval=0.1,
-                after_subscribe=flaky,
-            )]
-
-        chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
-        assert any("completion" in c for c in chunks)
 
