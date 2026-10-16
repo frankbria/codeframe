@@ -348,3 +348,14 @@ describe('#1473 review: tell the truth about the commit and the mode', () => {
     expect(toast).not.toEqual(out.deny)
   })
 })
+
+test('one requirement failing two tests says tests, plural', async ($, on) => {
+  const two = { ...FAILING_RUN, requirements: [{ ...FAILING_RUN.requirements[0], status_before: 'open', gates: [
+    { gate: 'unit', outcome: 'failed', tests: ['test_unit_a'] }, { gate: 'contract', outcome: 'failed', tests: ['test_contract_a'] },
+  ] }] }
+  const w = world(on, json(two, 1))
+  await bash($, 'git commit -m x')
+  const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+  expect(toast).toMatch(/its tests do not pass/)
+  expect(toast).toMatch(/which tests fail/)
+})

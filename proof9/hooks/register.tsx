@@ -198,7 +198,7 @@ async function ratchet($: EngineInterface, flags: string[]): Promise<string> {
   const lines: string[] = []
   if (ran.exitCode === 2) lines.push('Nothing to lock: no passing tests found.')
   else if (doc.dry_run && n) lines.push(`Would lock in ${n} passing ${tests} (dry run: nothing written).`)
-  else if (n) lines.push(`✓ Locked in ${n} passing ${tests} as proof obligations.`)
+  else if (n) lines.push(`✓ Locked in ${n} passing ${tests} as requirements: proof9 checks each one before every commit.`)
   else lines.push('Every passing test is already locked in.')
 
   if (n && doc.already_locked.length) lines.push(`${doc.already_locked.length} already locked.`)
@@ -346,7 +346,7 @@ async function selectRequirement($: EngineInterface, id: string): Promise<void> 
     `**${md(r.id)}** — ${md(r.title)}`,
     `Status: ${md(r.status)} · severity ${md(r.severity)} · source ${md(r.source)}`,
     `Scope: ${scope.join('; ') || 'none'}`,
-    `Obligations: ${r.obligations.map(o => `${md(o.gate)} ${md(o.status)}`).join(', ') || 'none'}`,
+    `Checked by: ${r.obligations.map(o => `${md(GATE_WORDS[o.gate] ?? o.gate)} tests (${md(o.status)})`).join(', ') || 'nothing yet'}`,
     '',
     doc.evidence.length ? '**Evidence**' : 'No evidence recorded yet.',
     ...doc.evidence.slice(0, 10).map(e =>
@@ -471,19 +471,21 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     const list = broken.map(line)
     if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
     const names = (rs: typeof broken) => rs.map(r => (rs.length === 1 ? `${r.id} "${r.title}"` : r.id)).join(', ')
+    // Counted in tests, not requirements: one requirement can fail two.
+    const testCount = (rs: typeof broken) => rs.reduce((n, r) => n + r.tests.length, 0)
     const told = (n: number) => `Claude has been told which test${n === 1 ? '' : 's'} fail${n === 1 ? 's' : ''}`
     const parts = [
       regressed.length
         ? `this breaks ${names(regressed)}, which ${regressed.length === 1 ? 'was' : 'were'} proven to work`
         : '',
       unproven.length
-        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its test does' : 'their tests do'} not pass`
+        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its' : 'their'} ${testCount(unproven) === 1 ? 'test does' : 'tests do'} not pass`
         : '',
     ].filter(Boolean)
     return {
       kind: 'failing',
       // Whether the commit went ahead is added after it runs, never predicted.
-      person: broken.length ? `proof9: ${parts.join('; ')}. ${told(broken.length)}.` : 'proof9: the proof run reported a failure.',
+      person: broken.length ? `proof9: ${parts.join('; ')}. ${told(testCount(broken))}.` : 'proof9: the proof run reported a failure.',
       short: `proof9 blocked the commit: ${broken.map(r => r.id).join(', ') || 'the proof run failed'}.`,
       // The run checks the working tree, which can hold more than the commit.
       claude: [
