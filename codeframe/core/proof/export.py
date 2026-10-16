@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from jinja2 import Environment
 
@@ -34,14 +35,42 @@ def _state(req) -> str:
 
 
 def _commit(repo_path: Path) -> str | None:
+    return _git(repo_path, "rev-parse", "HEAD")
+
+
+def _git(repo_path: Path, *args: str) -> str | None:
     try:
         ran = subprocess.run(
-            ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
+            ["git", "-C", str(repo_path), *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
     return ran.stdout.strip() if ran.returncode == 0 else None
+
+
+def _repository(repo_path: Path) -> str:
+    """How a shared report names the repo: its origin URL, else its folder (#1518).
+
+    A local absolute path means nothing to the reader and leaks the sender's
+    username and layout. Credentials embedded in the URL are dropped.
+    """
+    url = _git(repo_path, "remote", "get-url", "origin")
+    if not url:
+        return repo_path.name
+    parts = urlsplit(url)
+    if parts.username or parts.password:
+        url = urlunsplit(parts._replace(netloc=parts.hostname + (f":{parts.port}" if parts.port else "")))
+    return url
+
+
+def _shareable_path(artifact_path: str, repo_path: Path) -> str:
+    """Repo-relative when inside the repo; otherwise the file name alone (#1518)."""
+    path = Path(artifact_path)
+    try:
+        return path.relative_to(repo_path).as_posix()
+    except ValueError:
+        return path.name
 
 
 def _verified(evidence) -> bool:
@@ -61,13 +90,17 @@ def export_document(workspace: Workspace) -> dict:
         row = requirement_to_dict(req)
         row["state"] = _state(req)
         row["evidence"] = [
-            {**evidence_to_dict(ev), "verified": _verified(ev)}
+            {
+                **evidence_to_dict(ev),
+                "artifact_path": _shareable_path(ev.artifact_path, Path(workspace.repo_path)),
+                "verified": _verified(ev),
+            }
             for ev in ledger.list_evidence(workspace, req.id)
         ]
         requirements.append(row)
     return {
         "provenance": {
-            "repository": str(workspace.repo_path),
+            "repository": _repository(Path(workspace.repo_path)),
             "commit": _commit(Path(workspace.repo_path)),
             "tool_version": __version__,
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

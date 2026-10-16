@@ -68,7 +68,7 @@ class TestTheJsonSource:
         workspace, path = ws
         doc = export_document(workspace)
         prov = doc["provenance"]
-        assert prov["repository"] == str(path)
+        assert prov["repository"] == path.name  # #1518: no local path
         assert prov["tool_version"]
         assert prov["generated_at"]
         assert "commit" in prov
@@ -128,7 +128,7 @@ class TestTheHtml:
         html = render_html(export_document(workspace))
         assert html.lstrip().lower().startswith("<!doctype html>")
         assert "PROOF9 evidence report" in html
-        assert str(path) in html
+        assert path.name in html and str(path) not in html  # #1518
         assert "<link" not in html and "src=\"http" not in html  # nothing fetched when printed
 
 
