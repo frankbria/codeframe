@@ -9,8 +9,9 @@ Privacy guarantees (see PRIVACY.md):
 - Resolution order: ``CODEFRAME_TELEMETRY`` env var > ``DO_NOT_TRACK`` >
   ``~/.codeframe/telemetry.json`` > default off.
 - Events carry only: command name (validated against the registered command
-  tree by the caller), duration, exit code, version, OS, Python version, and a
-  random anonymous id. Never args, paths, prompts, or project content.
+  tree by the caller), duration, exit code, the calling client (``cli``,
+  ``proof9`` or ``other``), version, OS, Python version, and a random
+  anonymous id. Never args, paths, prompts, or project content.
 - Crash reports carry the exception class and traceback frames *inside the
   codeframe package only* (paths relativized); exception messages are omitted
   because they frequently embed user file paths.
@@ -158,6 +159,16 @@ def _base_event(event: str, anonymous_id: str) -> dict:
     }
 
 
+# CODEFRAME_CLIENT names the caller (the proof9 plugin sets it). Recorded as
+# an enum so the field can never carry user content verbatim (#1475).
+_KNOWN_CLIENTS = {"cli", "proof9"}
+
+
+def client_name() -> str:
+    value = os.environ.get("CODEFRAME_CLIENT", "") or "cli"
+    return value if value in _KNOWN_CLIENTS else "other"
+
+
 def build_command_event(
     command: str, duration_ms: int, exit_code: int, anonymous_id: str
 ) -> dict:
@@ -169,6 +180,7 @@ def build_command_event(
             "duration_ms": duration_ms,
             "exit_code": exit_code,
             "success": exit_code == 0,
+            "client": client_name(),
         }
     )
     return payload
