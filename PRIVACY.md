@@ -41,6 +41,7 @@ Only when telemetry is enabled, one small batch is sent per CLI invocation.
 | `command` | `"work start"` | Validated against the registered command list — your arguments, file names, and typos are never included |
 | `duration_ms` | `1234` | Wall-clock duration of the command |
 | `exit_code` / `success` | `0` / `true` | |
+| `client` | `"proof9"` | What ran `cf`: `cli` when run directly, `proof9` when the Claude Code plugin ran it, `other` for anything else — the value you set is never sent verbatim |
 | `version` | `"0.1.0"` | CodeFRAME version |
 | `os` | `"linux"` | Operating system family only |
 | `python` | `"3.12.4"` | Python version |
