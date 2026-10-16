@@ -73,7 +73,11 @@ class TestScopedRunRechecksSatisfied:
             results, _ = run_proof_with_diagnostics(ws)
 
         assert req.id in results
-        assert ledger.get_requirement(ws, req.id).status == ReqStatus.OPEN
+        reopened = ledger.get_requirement(ws, req.id)
+        assert reopened.status == ReqStatus.OPEN
+        # The failure is recorded on the obligations, so status counts it failing.
+        # reopen_requirement reloads the row, which used to drop the outcomes.
+        assert {o.status for o in reopened.obligations} == {"failed"}
 
     def test_a_satisfied_requirement_outside_the_diff_is_not_run(self, repo):
         ws = create_or_load_workspace(repo)

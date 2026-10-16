@@ -610,6 +610,10 @@ def run_proof_with_diagnostics(
                 # skipped by --gate / enabled_gates or reported UNVERIFIABLE is
                 # not evidence it broke, and reopening on that blocked merges on
                 # every plain `--gate` run once #1484 brought satisfied ones in.
+                # Persist the outcomes first: reopen_requirement reloads the row,
+                # and without this the failure never reached the obligations,
+                # so a reopened requirement did not count as failing.
+                ledger.save_requirement(workspace, req)
                 ledger.reopen_requirement(
                     workspace, req.id,
                     reason="obligations no longer all pass",
