@@ -431,6 +431,7 @@ codeframe checkpoint create "MVP complete"
 |---------|-------------|
 | `codeframe proof run` | Run all applicable proof obligations |
 | `codeframe proof capture` | Capture a glitch as a permanent requirement |
+| `codeframe proof ratchet` | Lock every currently-passing test in as a requirement |
 | `codeframe proof list` | List proof requirements |
 | `codeframe proof status` | Summary across all gates |
 | `codeframe proof show <id>` | Requirement detail and evidence |

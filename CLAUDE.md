@@ -305,6 +305,9 @@ cf blocker list
 cf blocker show <id>
 cf blocker answer <id> "answer"
 
+# Proof
+cf proof capture | ratchet [--dry-run] [--path GLOB] | run [--full] | list | show | status | waive
+
 # Quality / State
 cf review && cf patch export && cf commit create -m "feat: ..."
 cf checkpoint create|list|restore

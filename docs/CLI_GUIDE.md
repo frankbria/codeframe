@@ -199,6 +199,7 @@ default strategy. Start the batch, then watch it from another terminal with
 
 ```bash
 cf proof capture                      # Capture a glitch as a permanent requirement
+cf proof ratchet [--dry-run]          # Lock every currently-passing test in as a requirement
 cf proof run                          # Run obligations touched by the current diff
 cf proof run --full                   # Re-check every non-waived requirement
 cf proof list                         # List all requirements
@@ -214,7 +215,20 @@ cf checkpoint restore <id>            # Restore task statuses (files untouched)
 
 `cf proof capture` works in any git repository, with or without `cf init`: it
 creates `.codeframe/` at the repository's top level the first time it runs.
-Every other `cf proof` command needs a workspace that already exists.
+`cf proof ratchet` creates it the same way. Every other `cf proof` command needs
+a workspace that already exists.
+
+**Ratchet: start from the tests you already have.** A fresh ledger is empty, so
+`cf proof run` has nothing to enforce. `cf proof ratchet` runs your pytest suite
+once and turns each passing test into a requirement with one `UNIT` obligation
+naming that test, so nothing that passes today can silently stop passing. Each
+one is scoped to the files its test covers when the project has `pytest-cov`,
+and to the whole repository otherwise. Failing and skipped tests are not locked
+in, and re-running adds only tests not already locked. `--dry-run` shows what it
+would lock; `--path 'tests/unit/*'` narrows it. It exits 2 when there is nothing
+to lock (no tests, or none pass) and 1 when the suite cannot run. Run
+`cf proof run` afterwards to record their evidence; until then the merge gate
+treats them as open.
 
 **How each gate is verified.** `UNIT` and `CONTRACT` run pytest, and `SEC` runs
 bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and

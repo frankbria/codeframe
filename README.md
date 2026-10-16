@@ -164,6 +164,8 @@ cf proof run --full
 
 `cf proof capture` also works on its own in any git repository. It creates
 `.codeframe/` on first use, so you can start recording defects without `cf init`.
+To start from the tests you already have, `cf proof ratchet` locks every
+currently-passing test in as a requirement, so it cannot silently stop passing.
 
 **6. Ship**
 
