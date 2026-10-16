@@ -195,3 +195,87 @@ def test_requirements_for_run_takes_the_changed_scope():
     assert _wants_satisfied(full=False, changed_scope=None)
     assert _wants_satisfied(full=False, changed_scope=RequirementScope(files=["x.py"]))
     assert not _wants_satisfied(full=False, changed_scope=RequirementScope())
+
+
+def _two_gate_satisfied(ws, where: str = "src/a.py"):
+    """A satisfied requirement with UNIT and SEC obligations, scoped to `where`."""
+    from codeframe.core.proof.models import Gate, Obligation, Requirement
+
+    req = Requirement(
+        id=ledger.next_req_id(ws), title="t", description="d",
+        severity=Severity.HIGH, source=Source.QA,
+        scope=RequirementScope(files=[where]),
+        obligations=[Obligation(gate=Gate.UNIT), Obligation(gate=Gate.SEC)],
+        evidence_rules=[],
+    )
+    ledger.save_requirement(ws, req)
+    ledger.mark_satisfied(ws, req)
+    return req
+
+
+class TestOnlyAFailureReopensASatisfiedRequirement:
+    """Review finding (#1484): a satisfied requirement was reopened whenever the
+    run did not cover every obligation. Reachable before only via --full
+    --gate; with satisfied requirements in plain runs, `--gate unit` or a narrow
+    `enabled_gates` would reopen them on every run and block the merge gate."""
+
+    def _edit(self, repo):
+        _commit(repo)
+        (repo / "src" / "a.py").write_text("A = 2\n")
+
+    def test_a_gate_filtered_pass_keeps_it_satisfied(self, repo):
+        from codeframe.core.proof.models import Gate
+
+        ws = create_or_load_workspace(repo)
+        req = _two_gate_satisfied(ws)
+        self._edit(repo)
+
+        with patch("codeframe.core.proof.runner._run_gate", return_value=(GateOutcome.PASSED, "ok")):
+            results, _ = run_proof_with_diagnostics(ws, gate_filter=Gate.UNIT)
+
+        assert results == {req.id: [(Gate.UNIT, GateOutcome.PASSED)]}
+        assert ledger.get_requirement(ws, req.id).status == ReqStatus.SATISFIED
+
+    def test_an_unverifiable_gate_keeps_it_satisfied(self, repo):
+        ws = create_or_load_workspace(repo)
+        req = _two_gate_satisfied(ws)
+        self._edit(repo)
+
+        def outcome(_ws, gate, _rules=()):
+            return (GateOutcome.UNVERIFIABLE if gate.value == "sec" else GateOutcome.PASSED, "x")
+
+        with patch("codeframe.core.proof.runner._run_gate", side_effect=outcome):
+            run_proof_with_diagnostics(ws)
+
+        assert ledger.get_requirement(ws, req.id).status == ReqStatus.SATISFIED
+
+    def test_a_failure_still_reopens_it(self, repo):
+        from codeframe.core.proof.models import Gate
+
+        ws = create_or_load_workspace(repo)
+        req = _two_gate_satisfied(ws)
+        self._edit(repo)
+
+        with patch("codeframe.core.proof.runner._run_gate", return_value=(GateOutcome.FAILED, "x")):
+            run_proof_with_diagnostics(ws, gate_filter=Gate.UNIT)
+
+        assert ledger.get_requirement(ws, req.id).status == ReqStatus.OPEN
+
+
+def test_open_and_satisfied_together_count_correctly(repo):
+    ws = create_or_load_workspace(repo)
+    touched = _satisfied(ws, "src/a.py")
+    skipped = _satisfied(ws, "src/b.py")
+    open_req, _ = capture_requirement(
+        ws, title="open", description="d", where="src/b.py",
+        severity=Severity.LOW, source=Source.QA,
+    )
+    _commit(repo)
+    (repo / "src" / "a.py").write_text("A = 2\n")
+
+    with patch("codeframe.core.proof.runner._run_gate", return_value=(GateOutcome.PASSED, "ok")):
+        results, diagnostics = run_proof_with_diagnostics(ws)
+
+    assert set(results) == {touched.id}
+    assert diagnostics.considered == 3
+    assert sorted(diagnostics.scope_skipped) == sorted([skipped.id, open_req.id])

@@ -143,7 +143,7 @@ _REASON_TEXT = {
         "satisfied ones"
     ),
     EmptyReason.EXCLUDED_BY_SCOPE: lambda d: (
-        f"all {len(d.scope_skipped)} open requirement(s) are out of scope for the "
+        f"all {len(d.scope_skipped)} requirement(s) are out of scope for the "
         "current changes — re-run with --full to include them"
     ),
     EmptyReason.EXCLUDED_BY_GATE_FILTER: lambda d: (
@@ -406,7 +406,7 @@ def _wants_satisfied(*, full: bool, changed_scope: "RequirementScope | None") ->
 
 
 def _requirements_for_run(
-    workspace: Workspace, *, full: bool, changed_scope: "RequirementScope | None" = None
+    workspace: Workspace, *, full: bool, changed_scope: "RequirementScope | None"
 ) -> list:
     """Which requirements a run evaluates (#923, #1484).
 
@@ -601,10 +601,15 @@ def run_proof_with_diagnostics(
                 # mark_satisfied stamps satisfied_at, which the ledger column
                 # and the API field never carried before (#923).
                 ledger.mark_satisfied(workspace, req)
-            elif req.status == ReqStatus.SATISFIED:
-                # A previously satisfied requirement that no longer passes is a
+            elif req.status == ReqStatus.SATISFIED and any(
+                o == GateOutcome.FAILED for _, o in req_results
+            ):
+                # A previously satisfied requirement that now FAILS is a
                 # regression: return it to OPEN so it re-fails and the merge
-                # gate sees it again (#923).
+                # gate sees it again (#923). Only a failure does: an obligation
+                # skipped by --gate / enabled_gates or reported UNVERIFIABLE is
+                # not evidence it broke, and reopening on that blocked merges on
+                # every plain `--gate` run once #1484 brought satisfied ones in.
                 ledger.reopen_requirement(
                     workspace, req.id,
                     reason="obligations no longer all pass",

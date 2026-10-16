@@ -234,8 +234,9 @@ To run the web UI from the checkout, follow
   their evidence rules: each obligation gets a `test_a11y_*` / `test_perf_*` /
   … test that runs by name, and a missing test is a failure. `MANUAL` is
   resolved only by a justified waiver.
-- **Scoped runs**: `cf proof run` checks only the requirements your diff
-  touches, and `--full` checks every requirement except waived ones.
+- **Scoped runs**: `cf proof run` checks the requirements your uncommitted
+  changes touch, satisfied ones included, and `--full` checks every
+  requirement except waived ones.
 - **Waivers** require a reason, record who approved them, can expire, and stay in the
   audit trail.
 

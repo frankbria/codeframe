@@ -89,7 +89,7 @@ class TestSatisfiedLifecycle:
         ledger.mark_satisfied(workspace, satisfied)
         ledger.save_requirement(workspace, _requirement("REQ-0002"))
 
-        ids = {r.id for r in _requirements_for_run(workspace, full=True)}
+        ids = {r.id for r in _requirements_for_run(workspace, full=True, changed_scope=None)}
 
         assert ids == {"REQ-0001", "REQ-0002"}, (
             "a --full run must re-verify satisfied requirements, or a "
@@ -99,6 +99,7 @@ class TestSatisfiedLifecycle:
     def test_a_scoped_run_still_prioritises_open_requirements(self, workspace):
         """The default run keeps its cheaper behaviour."""
         from codeframe.core.proof import ledger
+        from codeframe.core.proof.models import RequirementScope
         from codeframe.core.proof.runner import _requirements_for_run
 
         satisfied = _requirement("REQ-0001")
@@ -106,9 +107,10 @@ class TestSatisfiedLifecycle:
         ledger.mark_satisfied(workspace, satisfied)
         ledger.save_requirement(workspace, _requirement("REQ-0002"))
 
-        ids = {r.id for r in _requirements_for_run(workspace, full=False)}
+        # A clean tree (#1484): no diff, so nothing satisfied joins the run.
+        ids = {r.id for r in _requirements_for_run(workspace, full=False, changed_scope=RequirementScope())}
 
-        assert "REQ-0002" in ids
+        assert ids == {"REQ-0002"}
 
     def test_a_satisfied_requirement_can_return_to_open(self, workspace):
         """AC2, the pass → break → re-fail path."""
