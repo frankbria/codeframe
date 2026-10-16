@@ -797,7 +797,13 @@ def waiver_expired(req: Requirement, today: Optional[date] = None) -> bool:
 
 
 def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
-    """Find and revert expired waivers to open status."""
+    """Find expired waivers and reopen their requirements.
+
+    The waiver itself stays on the row (#1503): it is the record of who accepted
+    the risk, why and until when, and deleting it on revert erased that the
+    first time anyone ran or checked the ledger. Every reader keys on status,
+    so a waiver kept on an OPEN requirement is history, not one in force.
+    """
     _ensure_tables(workspace)
     today = datetime.now(timezone.utc).date()
     conn = get_db_connection(workspace)
@@ -818,11 +824,10 @@ def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
         req = _row_to_requirement(row)
         if waiver_expired(req, today):
             cursor.execute(
-                "UPDATE proof_requirements SET status = 'open', waiver = NULL WHERE id = ?",
+                "UPDATE proof_requirements SET status = 'open' WHERE id = ?",
                 (req.id,),
             )
             req.status = ReqStatus.OPEN
-            req.waiver = None
             expired.append(req)
 
     if expired:
