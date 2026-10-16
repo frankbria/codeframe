@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Failing } from '../types'
-import { isGitCommit } from './commit.ts'
+import { isGitCommit, runsCfProof } from './commit.ts'
 
 const failingAtom = atom({ plugin: 'proof9', key: 'failing' } as const, [])
 const dismissedAtom = atom({ plugin: 'proof9', key: 'dismissed' } as const, [])
@@ -206,7 +206,9 @@ type Listed = {
 const failureKey = (f: Failing) => `${f.id}:${f.tests.join(',')}`
 
 async function emptyHiddenKey($: EngineInterface): Promise<string> {
-  return `emptyHidden:${(await attempt(() => $.session.repo()))?.root ?? ''}`
+  // Outside a git repo, the directory: a shared empty key would hide the band everywhere.
+  const root = (await attempt(() => $.session.repo()))?.root ?? (await attempt(() => $.session.cwd()))
+  return `emptyHidden:${root ?? ''}`
 }
 
 /**
@@ -218,12 +220,9 @@ async function emptyHiddenKey($: EngineInterface): Promise<string> {
 async function refreshLedger($: EngineInterface): Promise<void> {
   const ran = await cf($, ['proof', 'list', '--json'], 10_000)
   const doc = 'failed' in ran || ran.exitCode !== 0 ? null : parse<Listed>(ran)
-  if (!doc) {
-    $.ui.status(undefined)
-    await update($, failingAtom, () => [])
-    await update($, emptyAtom, () => false)
-    return
-  }
+  // A ledger that cannot be read leaves the last known state: a transient error
+  // must not make a failing requirement's band vanish.
+  if (!doc) return
   const reqs = doc.requirements
   // Failing as `cf proof status` counts it (#1488): not waived, a failed obligation.
   const failing: Failing[] = reqs
@@ -236,6 +235,9 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   const noun = reqs.length === 1 ? 'obligation' : 'obligations'
   $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
   await update($, failingAtom, () => failing)
+  // A dismissal ends with its failure, so a later regression shows again.
+  const live = new Set(failing.map(failureKey))
+  await update($, dismissedAtom, keys => keys.filter(k => live.has(k)))
   const hidden = Boolean(await attempt(async () => $.store.get(await emptyHiddenKey($))))
   await update($, emptyAtom, () => reqs.length === 0 && !hidden)
 }
@@ -261,7 +263,10 @@ async function showEvidence($: EngineInterface, id: string): Promise<void> {
 async function waive($: EngineInterface, id: string, typed: string): Promise<void> {
   const m = /^(.*?)\s+until\s+(\d{4}-\d{2}-\d{2})\s*$/.exec(typed.trim())
   const reason = (m?.[1] ?? typed).trim()
-  if (!reason) return // a waiver needs a reason
+  if (!reason) {
+    $.ui.toast('proof9: a reason is required to waive a requirement.')
+    return
+  }
   await update($, waivingAtom, () => null)
   const ran = await cf($, ['proof', 'waive', id, '--reason', reason, ...(m ? ['--expires', m[2] ?? ''] : [])])
   if ('failed' in ran || ran.exitCode !== 0) {
@@ -346,7 +351,13 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (!isGitCommit(e.command)) return next(e)
+    if (!isGitCommit(e.command)) {
+      if (!runsCfProof(e.command)) return next(e)
+      // Claude ran the proof itself (say, after "Ask Claude to fix"): redraw from the ledger.
+      const ran = await next(e)
+      await attempt(() => refreshLedger($))
+      return ran
+    }
     const verdict = await preCommitVerdict($, timeoutSeconds)
     if (verdict.kind === 'error' && block) {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }

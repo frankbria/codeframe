@@ -21,10 +21,11 @@ const PROPS = {
 }
 
 /** The world beneath the plugin. `lists` answers successive `cf proof list` calls. */
-function world(on: On, lists: Answer[], store: Record<string, unknown> = {}) {
+function world(on: On, lists: Answer[], store: Record<string, unknown> = {}, opts: { noRepo?: boolean } = {}) {
   const calls: Call[] = []
   const submitted: string[] = []
   const filled: string[] = []
+  const toasts: string[] = []
   let n = 0
   on('process.run', (_$, e) => {
     calls.push({ argv: e.argv })
@@ -39,9 +40,13 @@ function world(on: On, lists: Answer[], store: Record<string, unknown> = {}) {
             : { stdout: '' }
     return { value: { exitCode: a.exitCode ?? 0, stdout: a.stdout ?? '', stderr: a.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', (_$, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
   on('ui.status', () => ({ value: undefined }))
-  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false, name: null } }))
+  on('session.repo', () => (opts.noRepo ? { value: null } : { value: { root: '/repo', remote: null, internal: false, name: null } }))
+  on('session.cwd', () => ({ value: '/elsewhere' }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('prompt.submit', (_$, e) => {
@@ -59,7 +64,7 @@ function world(on: On, lists: Answer[], store: Record<string, unknown> = {}) {
   })
   mock.store(on, store)
   const session = mock.session(on)
-  return { calls, submitted, filled, session }
+  return { calls, submitted, filled, toasts, session }
 }
 
 const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
@@ -183,5 +188,65 @@ describe('empty ledger band', () => {
     const ui = await band($)
     expect(await ui.find({ type: 'Button' })).toBeUndefined()
     expect(await ui.find({ key: 'engine-band' })).toBeDefined()
+  })
+})
+
+describe('review fixes', () => {
+  const bashOk = (on: On) =>
+    on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: '' }))
+
+  test('Claude running cf proof run clears a band whose requirement now passes', async ($, on) => {
+    bashOk(on)
+    world(on, [FAILING, CLEAN])
+    await start($)
+    const ui = await band($)
+    await $.tool.call({ tool: 'Bash', command: 'uv run pytest -q && cf proof run' })
+    expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeUndefined()
+  })
+
+  test('an unrelated Bash command does not re-read the ledger', async ($, on) => {
+    bashOk(on)
+    const w = world(on, [FAILING])
+    await start($)
+    const before = w.calls.filter(c => c.argv[2] === 'list').length
+    await $.tool.call({ tool: 'Bash', command: 'echo cf proof run' })
+    expect(w.calls.filter(c => c.argv[2] === 'list').length).toBe(before)
+  })
+
+  test('a failed ledger read keeps the band instead of clearing it', async ($, on) => {
+    bashOk(on)
+    world(on, [FAILING, { exitCode: 1, stderr: 'database is locked' }])
+    await start($)
+    const ui = await band($)
+    await $.tool.call({ tool: 'Bash', command: 'cf proof run' })
+    expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeDefined()
+  })
+
+  test('a dismissal ends with its failure: a later regression shows again', async ($, on) => {
+    bashOk(on)
+    world(on, [FAILING, CLEAN, FAILING])
+    await start($)
+    const ui = await band($)
+    await ui.press({ key: 'dismiss' })
+    await $.tool.call({ tool: 'Bash', command: 'cf proof run' })
+    await $.tool.call({ tool: 'Bash', command: 'cf proof run' })
+    expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeDefined()
+  })
+
+  test('an empty waiver reason says a reason is required', async ($, on) => {
+    const w = world(on, [FAILING])
+    await start($)
+    const ui = await band($)
+    await ui.press({ key: 'waive' })
+    await ui.input({ key: 'waive-reason', text: '  ' })
+    expect(w.toasts.some(t => /reason is required/i.test(t))).toBe(true)
+  })
+
+  test('without a git repo the dismissal is keyed to the directory, not shared', async ($, on) => {
+    const store: Record<string, unknown> = { 'emptyHidden:': true }
+    world(on, [EMPTY], store, { noRepo: true })
+    await start($)
+    const ui = await band($)
+    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeDefined()
   })
 })

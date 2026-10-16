@@ -160,8 +160,8 @@ function withoutRedirections(words: string[]): string[] {
   return kept
 }
 
-function runsGitCommit(all: string[]): boolean {
-  const words = withoutRedirections(all)
+/** Index of the word that is the program, past assignments and wrappers. */
+function programAt(words: string[]): number {
   let k = 0
   while (k < words.length) {
     const w = words[k] ?? ''
@@ -169,12 +169,29 @@ function runsGitCommit(all: string[]): boolean {
     if (WRAPPERS.has(w) || /^\w+=/.test(w) || (k > 0 && w.startsWith('-'))) k++
     else break
   }
-  if ((words[k] ?? '').split('/').pop() !== 'git') return false
+  return k
+}
+
+const program = (word: string | undefined) => (word ?? '').split('/').pop()
+
+function runsGitCommit(all: string[]): boolean {
+  const words = withoutRedirections(all)
+  const k = programAt(words)
+  if (program(words[k]) !== 'git') return false
   let j = k + 1
   while (j < words.length && (words[j] ?? '').startsWith('-')) {
     j += GIT_VALUE_OPTS.has(words[j] ?? '') ? 2 : 1
   }
   return words[j] === 'commit'
+}
+
+/** True when any simple command in ``line`` runs `cf proof …` (or `codeframe proof …`). */
+export function runsCfProof(line: string): boolean {
+  return simpleCommands(line).some(all => {
+    const words = withoutRedirections(all)
+    const k = programAt(words)
+    return ['cf', 'codeframe'].includes(program(words[k]) ?? '') && words[k + 1] === 'proof'
+  })
 }
 
 /** True when any simple command in ``line`` is `git … commit`. */
