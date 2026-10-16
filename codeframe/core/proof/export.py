@@ -73,7 +73,8 @@ def export_document(workspace: Workspace) -> dict:
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         },
         "requirements": requirements,
-        "runs": [run_summary(r) for r in ledger.list_runs(workspace, limit=1000)],
+        # The whole history: -1 is SQLite's "no limit", so the cover's count is the truth.
+        "runs": [run_summary(r) for r in ledger.list_runs(workspace, limit=-1)],
         "merge_overrides": ledger.list_merge_overrides(workspace),
     }
 
@@ -108,7 +109,7 @@ when this report is made. A run that verified nothing is marked VACUOUS.</p>
 {% if not doc.requirements %}<p>No requirements in the ledger.</p>{% endif %}
 {% for r in doc.requirements %}
 <h3>{{ r.id }}: {{ r.title }}
-<span class="tag {{ {'satisfied':'satisfied','open':'open','waived':'waived','waiver expired':'expired'}[r.state] }}">{{ r.state|upper }}</span></h3>
+<span class="tag {{ {'satisfied':'satisfied','open':'open','waived':'waived','waiver expired':'expired'}.get(r.state, '') }}">{{ r.state|upper }}</span></h3>
 <table>
 <tr><th>Source</th><td>{{ r.source }}{% if r.source_issue %} ({{ r.source_issue }}){% endif %}</td></tr>
 <tr><th>Severity</th><td>{{ r.severity }}</td></tr>
@@ -134,7 +135,7 @@ when this report is made. A run that verified nothing is marked VACUOUS.</p>
 {% for run in doc.runs %}<tr>
 <td>{{ run.started_at }}</td>
 <td>{% if run.vacuous %}<span class="tag vacuous">VACUOUS</span> passed with nothing verified{% elif run.passed %}PASSED{% else %}<span class="tag fail">FAILED</span>{% endif %}</td>
-<td>{{ run.duration_ms if run.duration_ms is not none else "" }} ms</td><td><code>{{ run.run_id }}</code></td>
+<td>{{ "%d ms"|format(run.duration_ms) if run.duration_ms is not none else "—" }}</td><td><code>{{ run.run_id }}</code></td>
 </tr>{% endfor %}</table>{% endif %}
 
 <h2>Merge overrides</h2>
@@ -162,6 +163,8 @@ def render_pdf(html: str, out: Path) -> None:
             "PDF export prints the HTML report with Chrome or Chromium, and none was found "
             "on PATH. Use --format html and print it from any browser."
         )
+    # A stale file must not pass for a print that failed.
+    Path(out).unlink(missing_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         page = Path(tmp) / "report.html"
         page.write_text(html, encoding="utf-8")

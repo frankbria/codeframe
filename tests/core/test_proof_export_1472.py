@@ -167,3 +167,36 @@ class TestTheCommand:
         _, path = ws
         result = runner.invoke(app, ["proof", "export", "-w", str(path), "--format", "docx", "--output", str(tmp_path / "x")])
         assert result.exit_code == 1
+
+
+class TestReviewFixes:
+    def test_a_failed_print_is_not_hidden_by_a_stale_pdf(self, ws, tmp_path, monkeypatch):
+        workspace, _ = ws
+        out = tmp_path / "report.pdf"
+        out.write_bytes(b"%PDF stale from yesterday")
+        failing = tmp_path / "fake-chrome"
+        failing.write_text("#!/bin/sh\nexit 1\n")
+        failing.chmod(0o755)
+        monkeypatch.setattr("codeframe.core.proof.export.shutil.which", lambda name: str(failing))
+        with pytest.raises(RuntimeError, match="could not print"):
+            render_pdf(render_html(export_document(workspace)), out)
+        assert not out.exists()
+
+    def test_an_unknown_state_renders_instead_of_crashing(self, ws):
+        workspace, _ = ws
+        doc = export_document(workspace)
+        doc["requirements"][0]["state"] = "deprecated"
+        assert "DEPRECATED" in render_html(doc)
+
+    def test_the_whole_run_history_is_exported(self, ws, monkeypatch):
+        workspace, _ = ws
+        seen = {}
+        real = ledger.list_runs
+
+        def spy(ws_, limit=5):
+            seen["limit"] = limit
+            return real(ws_, limit=limit)
+
+        monkeypatch.setattr("codeframe.core.proof.export.ledger.list_runs", spy)
+        export_document(workspace)
+        assert seen["limit"] < 0  # SQLite: no limit

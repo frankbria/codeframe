@@ -839,15 +839,15 @@ def export(
         raise typer.Exit(1)
 
     out = output or Path(f"proof-report.{fmt}")
-    doc = export_document(workspace)
     try:
+        doc = export_document(workspace)
         if fmt == "json":
             out.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
         elif fmt == "html":
             out.write_text(render_html(doc), encoding="utf-8")
         else:
             render_pdf(render_html(doc), out)
-    except (OSError, RuntimeError) as e:
+    except Exception as e:  # a locked or damaged ledger too, not just the write
         print_error(e)
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] Wrote the evidence report to {escape(str(out))}")
