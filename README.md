@@ -61,7 +61,7 @@ vacuous rather than green, and every waiver records who approved it, why, and
 [VISION.md](docs/VISION.md#prove-is-the-output-any-good).
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.5`).** The Golden Path CLI
+> **CodeFRAME is in public beta (`0.9.6`).** The Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) and the v2 API are stable enough to build
 > on. The web UI and anything marked in progress in the
 > [roadmap](docs/PRODUCT_ROADMAP.md) are still moving, and on-disk `.codeframe/`
