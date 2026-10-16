@@ -86,3 +86,16 @@ def test_nothing_to_lock_keeps_exit_2_and_reports_it(repo):
     doc = json.loads(result.stdout)
     assert doc["locked"] == {}
     assert doc["failed"] == ["test_broken"]
+
+
+def test_status_counts_ratchet_requirements_as_locked(repo):
+    assert _ratchet(repo).exit_code == 0
+    capture = runner.invoke(app, [
+        "proof", "capture", "-w", str(repo), "--title", "t", "--description", "d",
+        "--where", "calc.py", "--severity", "low", "--source", "qa",
+    ])
+    assert capture.exit_code == 0, capture.output
+    result = runner.invoke(app, ["proof", "status", "-w", str(repo), "--json"])
+    counts = json.loads(result.stdout)["counts"]
+    assert counts["total"] == 2
+    assert counts["locked"] == 1
