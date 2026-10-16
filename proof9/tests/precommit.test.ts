@@ -39,7 +39,7 @@ const STATUS = listed([true, false])
 
 const json = (doc: unknown, exitCode = 0): Answer => ({ exitCode, stdout: JSON.stringify(doc) })
 
-function world(on: On, run: Answer, status: Answer = json(STATUS)) {
+function world(on: On, run: Answer, status: Answer = json(STATUS), opts: { commitFails?: boolean } = {}) {
   const calls: Call[] = []
   const toasts: string[] = []
   const statuses: (string | undefined)[] = []
@@ -66,6 +66,7 @@ function world(on: On, run: Answer, status: Answer = json(STATUS)) {
   // The real Bash, beneath the plugin.
   on('tool.call', { tool: 'Bash' }, (_$, e) => {
     commands.push(e.command)
+    if (opts.commitFails) return { isError: true, result: 'hook rejected', text: 'pre-commit hook failed' }
     return { result: { stdout: '[main abc123] msg', stderr: '', interrupted: false }, text: '[main abc123] msg' }
   })
   return { calls, toasts, statuses, commands }
@@ -112,6 +113,11 @@ describe('warn mode (default)', () => {
     expect(w.commands).toEqual(['git commit -m x'])
     expect(out.deny).toBeUndefined()
     expect(w.toasts.some(t => t.includes('REQ-0003'))).toBe(true)
+    // #1473: the person learns what broke, that Claude knows, and that the commit went ahead.
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).toContain('Login 500s on an empty form')
+    expect(toast).toMatch(/Claude/)
+    expect(toast).toMatch(/went ahead/)
     const said = (out.context ?? []).join('\n')
     expect(said).toContain('REQ-0003')
     expect(said).toContain('Login 500s on an empty form')
@@ -132,7 +138,7 @@ describe('warn mode (default)', () => {
     const out = await bash($, 'git commit -m x')
     expect(w.toasts).toEqual([])
     expect(out.context).toBeUndefined()
-    expect(w.statuses.at(-1)).toBe('proof9 · 2 obligations · 1 failing')
+    expect(w.statuses.at(-1)).toBe('2 requirements · 1 failing')
   })
 
   test('an empty ledger points at /proof and /proof ratchet and does not block', async ($, on) => {
@@ -141,6 +147,7 @@ describe('warn mode (default)', () => {
     expect(w.commands).toEqual(['git commit -m x'])
     expect(out.deny).toBeUndefined()
     expect(w.toasts.some(t => t.includes('/proof') && t.includes('/proof ratchet'))).toBe(true)
+    expect(w.toasts.some(t => /obligation/i.test(t))).toBe(false)
   })
 
   test('a vacuous run is reported as vacuous, never as a pass', async ($, on) => {
@@ -180,6 +187,9 @@ describe('block mode (opt-in)', () => {
     expect(w.commands).toEqual([])
     expect(out.deny).toContain('REQ-0003')
     expect(out.deny).toContain('test_unit_empty_form')
+    // The person must not be told the commit went ahead when it was refused.
+    expect(w.toasts.some(t => /went ahead/.test(t))).toBe(false)
+    expect(w.toasts.some(t => /blocked/.test(t))).toBe(true)
   })
 
   test('a pass lets the commit run', { options: { mode: 'block' } }, async ($, on) => {
@@ -276,7 +286,7 @@ describe('review fixes', () => {
   test('one obligation is singular', async ($, on) => {
     const w = world(on, json(PASSING_RUN), json(listed([false])))
     await bash($, 'git commit -m x')
-    expect(w.statuses.at(-1)).toBe('proof9 · 1 obligation · 0 failing')
+    expect(w.statuses.at(-1)).toBe('1 requirement · 0 failing')
   })
 })
 
@@ -290,6 +300,62 @@ describe('status line', () => {
   test('says so when the ledger is empty', async ($, on) => {
     const w = world(on, json(EMPTY_LEDGER, 2), json(listed([])))
     await bash($, 'git commit -m x')
-    expect(w.statuses.at(-1)).toBe('proof9 · no obligations yet')
+    expect(w.statuses.at(-1)).toBe('nothing checked yet')
   })
+})
+
+describe('a requirement that was never proven is not called a regression (#1473 walk)', () => {
+  const NEVER_PROVEN = {
+    ...FAILING_RUN,
+    requirements: [{ ...FAILING_RUN.requirements[0], status_before: 'open', status_after: 'open' }],
+  }
+
+  test('the person is told it is not proven yet, not that it broke', async ($, on) => {
+    const w = world(on, json(NEVER_PROVEN, 1))
+    await bash($, 'git commit -m x')
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).toMatch(/not proven yet: its test does not pass/)
+    expect(toast).not.toMatch(/proven to work|breaks|as expected/)
+  })
+
+  test('Claude is told the same, and what to do for each kind', async ($, on) => {
+    const w = world(on, json(NEVER_PROVEN, 1))
+    const out = await bash($, 'git commit -m x')
+    const said = (out.context ?? []).join('\n')
+    expect(said).toMatch(/not proven yet/)
+    expect(said).not.toMatch(/proven to hold/)
+    expect(said).toMatch(/still a generated draft, fill it in/i)
+    expect(said).not.toMatch(/as expected/)
+    expect(w.commands).toEqual(['git commit -m x'])
+  })
+})
+
+describe('#1473 review: tell the truth about the commit and the mode', () => {
+  test('warn mode says the commit went ahead only after it did', async ($, on) => {
+    const w = world(on, json(FAILING_RUN, 1), json(STATUS), { commitFails: true })
+    await bash($, 'git commit -m x')
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).not.toMatch(/went ahead/)
+  })
+
+  test('block mode explains the mode, where to change it, and toasts one short line', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json(FAILING_RUN, 1))
+    const out = await bash($, 'git commit -m x')
+    expect(out.deny).toMatch(/block mode/)
+    expect(out.deny).toMatch(/\/config/)
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast.length).toBeLessThan(140)
+    expect(toast).not.toEqual(out.deny)
+  })
+})
+
+test('one requirement failing two tests says tests, plural', async ($, on) => {
+  const two = { ...FAILING_RUN, requirements: [{ ...FAILING_RUN.requirements[0], status_before: 'open', gates: [
+    { gate: 'unit', outcome: 'failed', tests: ['test_unit_a'] }, { gate: 'contract', outcome: 'failed', tests: ['test_contract_a'] },
+  ] }] }
+  const w = world(on, json(two, 1))
+  await bash($, 'git commit -m x')
+  const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+  expect(toast).toMatch(/its tests do not pass/)
+  expect(toast).toMatch(/which tests fail/)
 })

@@ -1,7 +1,7 @@
 {
   "name": "proof9",
   "version": "0.1.0",
-  "description": "Turn a bug into a permanent, enforced proof obligation.",
+  "description": "Record a bug so it stays fixed: proof9 checks it before every commit.",
   "author": {
     "name": "Frank Bria"
   },
@@ -11,7 +11,7 @@
   "userConfig": {
     "mode": {
       "type": "string",
-      "title": "On failing proof obligations",
+      "title": "When a requirement fails",
       "description": "warn: report failures and let the commit proceed. block: deny the commit.",
       "default": "warn",
       "options": [

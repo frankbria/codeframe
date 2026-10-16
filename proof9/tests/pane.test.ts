@@ -47,6 +47,7 @@ function world(on: On, ledger: unknown = LEDGER, runs: unknown[] = RUNS) {
       : e.argv[2] === 'list' ? { stdout: JSON.stringify({ ...(ledger as object), runs }) }
         : e.argv[2] === 'status' ? { exitCode: 1, stderr: 'the pane must not read status: it reverts expired waivers' }
           : e.argv[2] === 'show' ? { stdout: JSON.stringify(SHOW) }
+            : e.argv[2] === 'capture' ? { stdout: JSON.stringify({ requirement: { id: 'REQ-0009', title: 't', obligations: [{ gate: 'unit' }] }, stubs: {}, workspace_created: false, warnings: [] }) }
             : e.argv[2] === 'run' ? { exitCode: 1, stdout: JSON.stringify({ failed: true, vacuous: false, empty_reason: null, description: null, requirements: [] }) }
               : { stdout: '' }
     return { value: { exitCode: a.exitCode ?? 0, stdout: a.stdout ?? '', stderr: a.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -100,7 +101,7 @@ describe('the ledger', () => {
     world(on)
     await proof($, '')
     const ui = await pane($)
-    expect((await ui.find({ type: 'Text', text: /obligations ·/ }))?.text).toContain('5 obligations · 2 failing')
+    expect((await ui.find({ type: 'Text', text: /requirements ·/ }))?.text).toContain('5 requirements · 2 failing')
   })
 })
 
@@ -173,7 +174,7 @@ test('an empty ledger shows the two ways forward', async ($, on) => {
   world(on, { requirements: [] }, [])
   await proof($, '')
   const ui = await pane($)
-  const empty = (await ui.find({ type: 'Text', text: /No proof obligations yet/ }))?.text ?? ''
+  const empty = (await ui.find({ type: 'Text', text: /Nothing is checked yet/ }))?.text ?? ''
   expect(empty).toContain('/proof <what went wrong>')
   expect(empty).toContain('/proof ratchet')
 })
@@ -198,4 +199,23 @@ test('the pane never reads cf proof status (it reverts expired waivers)', async 
   const ui = await pane($)
   await ui.press({ key: 'run' })
   expect(w.argvs.some(a => a.startsWith('cf proof status'))).toBe(false)
+})
+
+describe('first-run wording (#1473)', () => {
+  test('no "obligation" anywhere a first-time user reads, and the time reads as a time', async ($, on) => {
+    world(on, { requirements: [] }, RUNS)
+    await proof($, '')
+    const ui = await pane($)
+    const texts = await Promise.all([/ledger/, /Last run/, /Nothing is checked yet/, /Usage/].map(async re =>
+      (await ui.find({ type: 'Text', text: re }))?.text ?? ''))
+    expect(texts.join('\n')).not.toMatch(/obligation/i)
+    expect(texts[1]).toContain('2026-10-16 10:00 UTC')
+    expect(texts[1]).not.toMatch(/\d{2}:\d{2}:\d{2}\./)
+  })
+
+  test('/proof capture refreshes an open pane', async ($, on) => {
+    const w = world(on)
+    await proof($, 'Login crashes on an empty password')
+    expect(w.argvs.filter(a => a === 'cf proof list --json').length).toBeGreaterThanOrEqual(1)
+  })
 })

@@ -73,6 +73,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   JSON is the source, HTML renders it with all user text escaped, and PDF
   prints the HTML with Chrome or Chromium (no new dependency).
 
+### Changed (first run)
+
+- **First-run messages say what to do in plain words** (#1473), fixed by
+  walking install → `/proof` → capture → first commit in a real session.
+  `cf proof run` and `status` on an empty ledger name both ways forward
+  (`cf proof capture` / `cf proof ratchet`, each with what it does). proof9
+  no longer says "obligation", names checks in words ("security tests"),
+  explains the draft tests and `.codeframe/`, shows times as times,
+  refreshes an open pane after a capture, and no longer calls a requirement
+  that was never proven a regression. The transcript is
+  [docs/demos/proof9-first-run.md](docs/demos/proof9-first-run.md).
+
 ### Fixed
 
 - **A lapsed waiver keeps its record when it reverts** (#1503). Every

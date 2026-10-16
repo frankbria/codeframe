@@ -94,6 +94,9 @@ describe('failing requirement band', () => {
     expect(w.submitted[0]).toContain('REQ-0003')
     expect(w.submitted[0]).toContain('test_unit_req_0003')
     expect(w.submitted[0]).toMatch(/do not weaken or delete/i)
+    // #1473: a freshly captured requirement was never proven; the prompt must not claim it was.
+    expect(w.submitted[0]).not.toMatch(/proven/i)
+    expect(w.submitted[0]).toMatch(/still a generated draft/i)
   })
 
   test('Show evidence appends cf proof show as a notice', async ($, on) => {
@@ -149,7 +152,7 @@ describe('empty ledger band', () => {
     world(on, [EMPTY])
     await start($)
     const ui = await band($)
-    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Nothing is checked yet/ })).toBeDefined()
   })
 
   test('Lock in passing tests runs the ratchet and reports it', async ($, on) => {
@@ -159,7 +162,7 @@ describe('empty ledger band', () => {
     await ui.press({ key: 'ratchet' })
     expect(w.calls.some(c => c.argv[2] === 'ratchet')).toBe(true)
     expect(JSON.stringify(w.session.appended())).toContain('Locked in 1 passing test')
-    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /Nothing is checked yet/ })).toBeUndefined()
   })
 
   test('Capture a bug starts /proof at the prompt', async ($, on) => {
@@ -176,14 +179,14 @@ describe('empty ledger band', () => {
     await start($)
     const ui = await band($)
     await ui.press({ key: 'dismiss-empty' })
-    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /Nothing is checked yet/ })).toBeUndefined()
   })
 
   test('is not shown again once dismissed for this repository', async ($, on) => {
     world(on, [EMPTY], { 'emptyHidden:/repo': true })
     await start($)
     const ui = await band($)
-    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /Nothing is checked yet/ })).toBeUndefined()
   })
 
   test('nothing shows when the ledger has obligations and none fail', async ($, on) => {
@@ -251,7 +254,7 @@ describe('review fixes', () => {
     world(on, [EMPTY], store, { noRepo: true })
     await start($)
     const ui = await band($)
-    expect(await ui.find({ type: 'Text', text: /No proof obligations yet/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Nothing is checked yet/ })).toBeDefined()
   })
 })
 

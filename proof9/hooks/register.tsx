@@ -25,7 +25,7 @@ const TITLE_MAX = 80
 
 const USAGE = [
   'Usage:',
-  '  /proof <what went wrong>                  capture a bug as a permanent proof obligation',
+  '  /proof <what went wrong>                  record a bug so it stays fixed',
   '  /proof                                    capture the text you selected in the transcript',
   '  /proof ratchet [--dry-run] [--path GLOB]  lock in every test that passes today',
 ].join('\n')
@@ -95,6 +95,12 @@ type Captured = {
 
 const SEVERITIES = ['critical', 'high', 'medium', 'low']
 
+// PROOF9's gate codes in words a first-time reader knows (#1473).
+const GATE_WORDS: Record<string, string> = {
+  unit: 'unit', contract: 'contract', sec: 'security', e2e: 'end-to-end', visual: 'visual',
+  a11y: 'accessibility', perf: 'performance', demo: 'demo', manual: 'manual review',
+}
+
 type CaptureFields = { title: string; description: string; where?: string; severity?: string }
 
 /** `cf proof capture --json`; the summary on success, or what went wrong. */
@@ -113,23 +119,25 @@ async function captureWith($: EngineInterface, f: CaptureFields): Promise<{ ok: 
   const doc = ran.exitCode === 0 ? parse<Captured>(ran) : null
   if (!doc) return { ok: false, text: `cf proof capture failed:\n${errorText(ran)}` }
 
+  // Words for someone who has read nothing (#1473): no "obligations" or "stubs".
   const req = doc.requirement
-  const lines = [
-    `✓ ${req.id} captured: ${req.title}`,
-    `  Obligations: ${req.obligations.map(o => o.gate).join(', ')}`,
-  ]
+  const gates = req.obligations.map(o => GATE_WORDS[o.gate] ?? o.gate)
+  const kinds = gates.length > 1 ? `${gates.slice(0, -1).join(', ')} and ${gates.at(-1)}` : gates[0] ?? 'its'
+  const lines = [`✓ ${req.id} captured: ${req.title}`, `It will be checked by ${kinds} tests.`]
   const stubs = Object.values(doc.stubs)
-  if (stubs.length) lines.push(`  Test stubs: ${stubs.join(', ')}`)
-  for (const warning of doc.warnings) lines.push(`  ⚠ ${warning}`)
-  if (doc.workspace_created) lines.push('Created .codeframe/ in this repository.')
-  lines.push('Implement the stub tests, then run `cf proof run` to enforce it.')
+  if (stubs.length) lines.push('Draft tests were written for you; fill them in so they fail on the bug and pass on the fix:', ...stubs.map(s => `  ${s}`))
+  for (const warning of doc.warnings) lines.push(`⚠ ${warning}`)
+  lines.push('Then run `cf proof run` to record the proof. From then on, proof9 checks it before every commit.')
+  if (doc.workspace_created) lines.push('(Created .codeframe/ in this repository: that is where proof9 keeps its ledger.)')
   return { ok: true, text: lines.join('\n') }
 }
 
 async function capture($: EngineInterface, text: string): Promise<string> {
   const first = (text.split('\n').find(line => line.trim()) ?? text).trim()
   const title = Array.from(first).slice(0, TITLE_MAX).join('').trim()
-  return (await captureWith($, { title, description: text })).text
+  const captured = await captureWith($, { title, description: text })
+  if (captured.ok) await attempt(() => refreshLedger($)) // an open pane shows it at once
+  return captured.text
 }
 
 const CAPTURE_TOOL = {
@@ -190,7 +198,7 @@ async function ratchet($: EngineInterface, flags: string[]): Promise<string> {
   const lines: string[] = []
   if (ran.exitCode === 2) lines.push('Nothing to lock: no passing tests found.')
   else if (doc.dry_run && n) lines.push(`Would lock in ${n} passing ${tests} (dry run: nothing written).`)
-  else if (n) lines.push(`✓ Locked in ${n} passing ${tests} as proof obligations.`)
+  else if (n) lines.push(`✓ Locked in ${n} passing ${tests} as requirements: proof9 checks each one before every commit.`)
   else lines.push('Every passing test is already locked in.')
 
   if (n && doc.already_locked.length) lines.push(`${doc.already_locked.length} already locked.`)
@@ -254,7 +262,7 @@ async function emptyHiddenKey($: EngineInterface): Promise<string> {
 
 /**
  * Reads the ledger and refreshes everything drawn from it: the status line
- * (`proof9 · N obligations · M failing`) and the band. The ledger, not the last
+ * (`N requirements · M failing`; the engine prefixes `proof9:`) and the band. The ledger, not the last
  * run, is the source: a scoped run that does not touch a still-failing
  * requirement must not clear its band.
  */
@@ -269,8 +277,9 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   // A lapsed waiver no longer covers it — read-only, as the merge gate decides
   // (#1276); `list`, unlike `status`, does not revert the stored status.
   const failing: Failing[] = reqs.filter(isFailing).map(toFailing)
-  const noun = reqs.length === 1 ? 'obligation' : 'obligations'
-  $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
+  // The engine prefixes the plugin's name; "requirement" is the word the CLI uses.
+  const noun = reqs.length === 1 ? 'requirement' : 'requirements'
+  $.ui.status(reqs.length ? `${reqs.length} ${noun} · ${failing.length} failing` : 'nothing checked yet')
   await update($, failingAtom, () => failing)
   await update($, ledgerAtom, () => reqs)
   if (doc.runs) await update($, runsAtom, () => doc.runs ?? [])
@@ -337,7 +346,7 @@ async function selectRequirement($: EngineInterface, id: string): Promise<void> 
     `**${md(r.id)}** — ${md(r.title)}`,
     `Status: ${md(r.status)} · severity ${md(r.severity)} · source ${md(r.source)}`,
     `Scope: ${scope.join('; ') || 'none'}`,
-    `Obligations: ${r.obligations.map(o => `${md(o.gate)} ${md(o.status)}`).join(', ') || 'none'}`,
+    `Checked by: ${r.obligations.map(o => `${md(GATE_WORDS[o.gate] ?? o.gate)} tests (${md(o.status)})`).join(', ') || 'nothing yet'}`,
     '',
     doc.evidence.length ? '**Evidence**' : 'No evidence recorded yet.',
     ...doc.evidence.slice(0, 10).map(e =>
@@ -348,6 +357,14 @@ async function selectRequirement($: EngineInterface, id: string): Promise<void> 
       ` · approved by ${md(r.waiver.approved_by || 'unknown')}${r.waiver.expires ? ` · expires ${md(r.waiver.expires)}` : ''}`)
   }
   await update($, detailAtom, () => lines.join('\n'))
+}
+
+/** `2026-10-16T10:17:19.739+00:00` → `2026-10-16 10:17 UTC` (the CLI reports UTC). */
+const readableTime = (iso: string | null) => {
+  const when = iso ? new Date(iso) : null
+  return when && !Number.isNaN(when.getTime())
+    ? `${when.toISOString().slice(0, 10)} ${when.toISOString().slice(11, 16)} UTC`
+    : 'at an unknown time'
 }
 
 /** One cell per run, oldest first: green passed, red failed, yellow verified nothing. */
@@ -378,7 +395,8 @@ async function notice($: EngineInterface, text: string): Promise<void> {
 async function askToFix($: EngineInterface, failing: Failing[]): Promise<void> {
   const list = failing.map(f => `- ${f.id} "${f.title}": ${f.tests.join(', ')}`).join('\n')
   await $.prompt.submit({
-    text: `proof9: these proven requirements fail:\n${list}\nFix the code so these tests pass again; do not weaken or delete the tests. Then run \`cf proof run\` to re-check them.`,
+    // Status-agnostic: a freshly captured requirement was never proven (#1473).
+    text: `proof9: these requirements fail their tests:\n${list}\nIf a test is still a generated draft, fill it in so it fails on the bug. Then fix the code so the tests pass; do not weaken or delete them. Run \`cf proof run\` to re-check.`,
   })
 }
 
@@ -410,12 +428,17 @@ type ProofRun = {
   vacuous: boolean
   empty_reason: string | null
   description: string | null
-  requirements: { id: string; title: string; gates: { gate: string; outcome: string; tests: string[] }[] }[]
+  requirements: {
+    id: string
+    title: string
+    status_before: string | null
+    gates: { gate: string; outcome: string; tests: string[] }[]
+  }[]
 }
 
 /** What a pre-commit proof run found, in the words each audience needs. */
 type Verdict =
-  | { kind: 'failing'; person: string; claude: string; deny: string }
+  | { kind: 'failing'; person: string; short: string; claude: string; deny: string }
   | { kind: 'note'; person: string }
   | { kind: 'error'; person: string }
   | { kind: 'quiet' }
@@ -440,24 +463,45 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
     const broken = doc.requirements
       .map(r => ({ ...r, tests: r.gates.filter(g => g.outcome === 'failed').flatMap(g => g.tests.length ? g.tests : [`${g.gate} gate`]) }))
       .filter(r => r.tests.length)
-    const list = broken.map(r => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`)
+    // Only a requirement that was satisfied before this run is a regression. One
+    // captured and never proven is failing as expected until its draft test is
+    // filled in and the bug fixed; calling it "proven" was false (#1473 walk).
+    const regressed = broken.filter(r => r.status_before === 'satisfied')
+    const unproven = broken.filter(r => r.status_before !== 'satisfied')
+    const line = (r: (typeof broken)[number]) => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`
+    const list = broken.map(line)
     if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
+    const names = (rs: typeof broken) => rs.map(r => (rs.length === 1 ? `${r.id} "${r.title}"` : r.id)).join(', ')
+    // Counted in tests, not requirements: one requirement can fail two.
+    const testCount = (rs: typeof broken) => rs.reduce((n, r) => n + r.tests.length, 0)
+    const told = (n: number) => `Claude has been told which test${n === 1 ? '' : 's'} fail${n === 1 ? 's' : ''}`
+    const parts = [
+      regressed.length
+        ? `this breaks ${names(regressed)}, which ${regressed.length === 1 ? 'was' : 'were'} proven to work`
+        : '',
+      unproven.length
+        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its' : 'their'} ${testCount(unproven) === 1 ? 'test does' : 'tests do'} not pass`
+        : '',
+    ].filter(Boolean)
     return {
       kind: 'failing',
-      person: broken.length
-        ? `proof9: ${broken.length} proven requirement(s) fail: ${broken.map(r => r.id).join(', ')}`
-        : 'proof9: the proof run reported a failure',
+      // Whether the commit went ahead is added after it runs, never predicted.
+      person: broken.length ? `proof9: ${parts.join('; ')}. ${told(testCount(broken))}.` : 'proof9: the proof run reported a failure.',
+      short: `proof9 blocked the commit: ${broken.map(r => r.id).join(', ') || 'the proof run failed'}.`,
       // The run checks the working tree, which can hold more than the commit.
       claude: [
-        'proof9: your working tree breaks requirements that were proven to hold:',
-        ...list.map(l => `- ${l}`),
-        'Fix the code so these tests pass again; do not weaken or delete the tests. `cf proof run` re-checks them.',
+        'proof9: requirements in your working tree fail their tests:',
+        ...regressed.map(r => `- ${line(r)} (was proven to work: a regression)`),
+        ...unproven.map(r => `- ${line(r)} (captured, not proven yet)`),
+        ...(regressed.length ? ['For a regression, fix the code so the test passes again.'] : []),
+        ...(unproven.length ? ['For one not proven yet: if its test is still a generated draft, fill it in so it fails on the bug; then fix the code so it passes.'] : []),
+        'Do not weaken or delete these tests. `cf proof run` re-checks them.',
       ].join('\n'),
-      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
+      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. proof9 is in block mode, which refuses commits while a requirement fails: fix the failure, or switch proof9's mode to warn in /config.`,
     }
   }
   if (doc.empty_reason === 'no_requirements') {
-    return { kind: 'note', person: 'proof9: no proof obligations yet. Capture a bug with /proof, or lock in passing tests with /proof ratchet.' }
+    return { kind: 'note', person: 'proof9 has nothing to check yet. Capture a bug with /proof, or lock in the tests that pass today with /proof ratchet.' }
   }
   if (doc.vacuous || ran.exitCode === 2) {
     return { kind: 'note', person: `proof9: nothing was verified${doc.description ? ` (${doc.description})` : ''}; this is not a pass.` }
@@ -473,7 +517,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'proof',
-      description: 'Capture a bug as a permanent proof obligation (or: /proof ratchet)',
+      description: 'Record a bug so it stays fixed (or: /proof ratchet to lock in passing tests)',
       argumentHint: '<what went wrong> | ratchet [--dry-run]',
     })
     // A tool that cannot be registered must not cost the rest of session start.
@@ -514,14 +558,18 @@ export const register: Register = (on, options) => {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
     }
     if (verdict.kind === 'failing' && block) {
-      $.ui.toast(verdict.person)
+      $.ui.toast(verdict.short)
       await attempt(() => refreshLedger($))
       return { deny: verdict.deny }
     }
-    if (verdict.kind !== 'quiet') {
+    if (verdict.kind === 'error' || verdict.kind === 'note') {
       $.ui.toast(verdict.kind === 'error' ? `proof9 could not check this commit: ${verdict.person}` : verdict.person)
     }
     const ran = await next(e)
+    if (verdict.kind === 'failing') {
+      const committed = ran.deny === undefined && ran.isError !== true
+      $.ui.toast(committed ? `${verdict.person} The commit went ahead.` : verdict.person)
+    }
     await attempt(() => refreshLedger($))
     // Warn mode: Claude reads the failures after the commit's own output and can fix them now.
     return verdict.kind === 'failing' && ran.deny === undefined
@@ -578,7 +626,7 @@ export const register: Register = (on, options) => {
     if (await read($, emptyAtom)) {
       return (
         <Box>
-          <Text>proof9: No proof obligations yet. </Text>
+          <Text>proof9: Nothing is checked yet. </Text>
           <Button
             key="ratchet"
             label="Lock in passing tests"
@@ -621,17 +669,17 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Text bold>
-          PROOF9 ledger · {ledger.length} {ledger.length === 1 ? 'obligation' : 'obligations'} · {failing.length} failing
+          PROOF9 ledger · {ledger.length} {ledger.length === 1 ? 'requirement' : 'requirements'} · {failing.length} failing
         </Text>
         {runs.length && Raster ? <Raster key="history" columns={columns} rows={1} cells={historyCells(runs, columns)} /> : null}
         {runs.length && !Raster ? (
           <Text>{runs.slice(0, columns).reverse().map(r => (r.vacuous ? '○' : r.passed ? '✓' : '✗')).join('')}</Text>
         ) : null}
         <Text dimColor>
-          {last ? `Last run ${last.started_at ?? ''}: ${lastWord}` : 'No runs yet.'}
+          {last ? `Last run ${readableTime(last.started_at)}: ${lastWord}` : 'No runs yet.'}
         </Text>
         {ledger.length === 0 ? (
-          <Text>{'No proof obligations yet. Capture one with /proof <what went wrong>, or lock in passing tests with /proof ratchet.'}</Text>
+          <Text>{'Nothing is checked yet. Capture a bug with /proof <what went wrong>, or lock in the tests that pass today with /proof ratchet.'}</Text>
         ) : null}
         {ledger.map(r => (
           <Button key={`req-${r.id}`} plain onPress={() => selectRequirement($, r.id)}>
