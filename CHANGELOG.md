@@ -50,6 +50,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   tool (`mcp__proof9__capture`) over `cf proof capture`, and in a repository
   with a ledger adds a short system-prompt section: offer a capture after
   fixing a regression; when a requirement fails, fix the code, not the test.
+- **Install proof9 from this repository** (#1471):
+  `/plugin install proof9 --marketplace frankbria/codeframe`. The repo root
+  carries the marketplace file, and CI validates, tests and type-checks the
+  plugin on every PR (`proof9-plugin`) against vendored API types in
+  `tools/proof9-types/`, installing the Claude Code version that wrote them.
 
 ### Documentation
 

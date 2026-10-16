@@ -167,6 +167,18 @@ cf proof run --full
 To start from the tests you already have, `cf proof ratchet` locks every
 currently-passing test in as a requirement, so it cannot silently stop passing.
 
+**In Claude Code: the proof9 plugin.** At the prompt of a Claude Code session:
+
+```
+/plugin install proof9 --marketplace frankbria/codeframe
+```
+
+(From a shell: `claude plugin install proof9 --marketplace frankbria/codeframe`.)
+It adds `/proof` to capture a bug or lock in passing tests, checks the ledger
+before every commit Claude makes (warning by default), and shows a failing
+requirement above the prompt. It needs codeframe-ai 0.9.7 or later on your
+`PATH`. See [`proof9/README.md`](proof9/README.md).
+
 **6. Ship**
 
 ```bash

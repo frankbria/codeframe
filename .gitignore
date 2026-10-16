@@ -107,3 +107,6 @@ web-ui/test-results/
 # they override the blanket *.log rule above.
 scripts/quickstart-cleanroom/artifacts/
 !scripts/quickstart-cleanroom/artifacts-*/run-logs/*.log
+
+# Written by Claude Code when it loads the plugin (#1471); vendored copy: tools/proof9-types/
+proof9/.claude-plugin/types/
