@@ -188,7 +188,7 @@ class TestRun:
 
         assert result.exit_code == 0, result.output
         assert "PASS" in result.output
-        assert "All obligations satisfied" in result.output
+        assert "All requirements satisfied" in result.output
 
     @patch("codeframe.core.proof.runner._run_gate")
     def test_run_with_failing_obligations(self, mock_run_gate, ws_with_req):
@@ -476,7 +476,7 @@ class TestClosedLoop:
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
         assert result.exit_code == 0, result.output
         assert "PASS" in result.output
-        assert "All obligations satisfied" in result.output
+        assert "All requirements satisfied" in result.output
 
         # Step 5 — verify evidence was recorded and req status is satisfied
         evidence = ledger.list_evidence(workspace, "REQ-0001")

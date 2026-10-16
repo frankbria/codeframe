@@ -103,9 +103,9 @@ class TestRequirementsWithNoObligationsAreNotAPass:
         result = _run(workspace_dir, self.DIAG)
         assert result.exit_code == 2, result.output
 
-    def test_it_still_says_to_add_obligations(self, workspace_dir):
+    def test_it_still_says_to_add_checks(self, workspace_dir):
         result = _run(workspace_dir, self.DIAG)
-        assert "obligation" in result.output.lower()
+        assert "add checks" in result.output.lower()
 
     def test_allow_empty_exits_zero(self, workspace_dir):
         result = _run(workspace_dir, self.DIAG, "--allow-empty")

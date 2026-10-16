@@ -38,3 +38,39 @@ def test_no_manifest_text_says_obligation():
         json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text()),
     ])
     assert not re.search(r"\bobligations?\b", texts, re.IGNORECASE), texts
+
+
+def _prose_literals(path: Path, *, skip_docstrings: bool):
+    """String constants in a Python module, minus docstrings when asked."""
+    import ast
+
+    tree = ast.parse(path.read_text())
+    docs = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and node.body and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if skip_docstrings and id(node) in docs:
+                continue
+            yield node.lineno, node.value
+
+
+# #1507: the CLI says what the plugin says. Command docstrings are `--help` text,
+# so the CLI module is checked whole; the runner's docstrings are for developers,
+# its other strings reach the console. The JSON key and enum code are an API.
+@pytest.mark.parametrize(
+    "rel, skip_docstrings",
+    [("codeframe/cli/proof_commands.py", False), ("codeframe/core/proof/runner.py", True)],
+)
+def test_no_cli_text_says_obligation(rel, skip_docstrings):
+    api = {"obligations", "no_obligations"}
+    hits = [
+        f"{rel}:{n}: {text[:80]!r}"
+        for n, text in _prose_literals(ROOT / rel, skip_docstrings=skip_docstrings)
+        if text not in api and re.search(r"\bobligations?\b", text, re.IGNORECASE)
+    ]
+    assert not hits, "\n".join(hits)

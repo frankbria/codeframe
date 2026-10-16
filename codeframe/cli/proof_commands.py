@@ -1,7 +1,7 @@
 """CLI commands for PROOF9 quality memory system.
 
 Provides `cf proof` subcommands for capturing requirements,
-running obligations, managing waivers, and viewing status.
+running their checks, managing waivers, and viewing status.
 """
 
 import functools
@@ -128,10 +128,22 @@ def _choose(
     return chosen
 
 
+#: Gate codes in words, as the proof9 plugin shows them (#1507).
+_GATE_WORDS = {
+    "unit": "unit", "contract": "contract", "sec": "security", "e2e": "end-to-end",
+    "visual": "visual", "a11y": "accessibility", "perf": "performance", "demo": "demo",
+    "manual": "manual review",
+}
+
+
+def _gate_words(req: "Requirement") -> str:
+    return ", ".join(_GATE_WORDS.get(o.gate.value, o.gate.value) for o in req.obligations)
+
+
 def _print_captured(req: "Requirement", stubs: "dict[Gate, Path]", repo_root: Path) -> None:
     console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {escape(req.title)}")
     console.print(f"  Glitch type: [cyan]{req.glitch_type.value if req.glitch_type else 'unknown'}[/cyan]")
-    console.print(f"  Obligations: {', '.join(o.gate.value for o in req.obligations)}")
+    console.print(f"  Checks: {_gate_words(req)}")
     console.print(f"  Scope files: {', '.join(req.scope.files) or 'none'}")
     console.print(f"  Scope routes: {', '.join(req.scope.routes) or 'none'}")
 
@@ -178,7 +190,7 @@ def capture(
 ) -> None:
     """Capture a glitch as a permanent proof requirement.
 
-    Creates a REQ with proof obligations and generates test stubs.
+    Creates a requirement with the checks that prove it, and generates test stubs.
     Interactive when run without arguments.
 
     Works in any git repository: the workspace is created on first use,
@@ -250,10 +262,10 @@ def ratchet(
     ),
     as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
-    """Lock every currently-passing test in as a proof obligation.
+    """Lock every currently-passing test in as a proof requirement.
 
     Runs the project's pytest suite once. Each passing test becomes a
-    requirement whose UNIT obligation is that test, scoped to the files it
+    requirement whose unit check is that test, scoped to the files it
     covers (needs pytest-cov in the project; otherwise the whole repository).
     Failing and skipped tests are not locked. Re-running adds only tests not
     already locked. Creates the workspace on first use, like capture.
@@ -317,7 +329,7 @@ def ratchet(
     if not suite.per_file_scope:
         console.print(
             "[yellow]⚠[/yellow] Per-test coverage was not available (it needs "
-            "pytest-cov with --cov-context), so each obligation is scoped to the "
+            "pytest-cov with --cov-context), so each requirement is scoped to the "
             "whole repository. Install pytest-cov to scope each one to the files "
             "its test covers."
         )
@@ -340,12 +352,12 @@ def ratchet(
     n = len(result.locked)
     tests = "test" if n == 1 else "tests"
     if dry_run and n:
-        console.print(f"Would lock in {n} passing {tests} as obligations (dry run — ledger not written):")
+        console.print(f"Would lock in {n} passing {tests} as requirements (dry run — ledger not written):")
         for name, files in result.locked.items():
             console.print(f"  {escape(name)}  [dim]({len(files)} file(s) in scope)[/dim]")
     elif n:
         console.print(
-            f"[green]✓[/green] Locked in {n} passing {tests} as obligations. "
+            f"[green]✓[/green] Locked in {n} passing {tests} as requirements. "
             "Nothing that passes today can silently stop passing."
         )
         console.print(
@@ -363,7 +375,7 @@ def run(
         None, "--workspace", "-w", help="Workspace path",
     ),
     full: bool = typer.Option(
-        False, "--full", help="Run all obligations (not just changed scope)",
+        False, "--full", help="Check every requirement (not just changed scope)",
     ),
     gate: Optional[str] = typer.Option(
         None, "--gate", help="Run only this gate (e.g., unit, e2e)",
@@ -372,24 +384,24 @@ def run(
         False,
         "--allow-empty",
         help=(
-            "Exit 0 when there are no applicable obligations. Off by default: "
+            "Exit 0 when there are no applicable checks. Off by default: "
             "a run that verified nothing is not a pass (#1118)."
         ),
     ),
     as_json: bool = typer.Option(False, "--json", help=JSON_HELP),
 ) -> None:
-    """Run proof obligations for current changes.
+    """Check the requirements that apply to the current changes.
 
     Determines which requirements apply to changed files,
-    runs their obligations, and collects evidence.
+    runs their checks, and collects evidence.
 
     Exit codes:
-        0  obligations ran and none failed — or nothing applied because the
+        0  checks ran and none failed — or nothing applied because the
            caller narrowed the run (out of scope, --gate, waived)
-        1  an obligation failed
+        1  a check failed
         2  nothing was verified and verification was impossible: an empty
            ledger, every gate disabled in proof_config.json, or requirements
-           with no obligations (see --allow-empty)
+           with no checks (see --allow-empty)
 
     Example:
         codeframe proof run
@@ -423,7 +435,7 @@ def run(
             raise typer.Exit(1)
 
     mode = "full" if full else "scope-filtered"
-    console.print(f"[dim]Running proof obligations ({mode})...[/dim]")
+    console.print(f"[dim]Checking requirements ({mode})...[/dim]")
 
     run_id = _new_run_id()
     before = {}
@@ -510,7 +522,7 @@ def run(
                 "[bold]cf proof run --full[/bold] ignores scope entirely."
             ),
             EmptyReason.EXCLUDED_BY_GATE_FILTER: (
-                "Drop [bold]--gate[/bold] to run every obligation."
+                "Drop [bold]--gate[/bold] to run every check."
             ),
             EmptyReason.EXCLUDED_BY_CONFIG: (
                 "Check [bold]enabled_gates[/bold] in "
@@ -523,7 +535,7 @@ def run(
                 "overlap."
             ),
             EmptyReason.NO_OBLIGATIONS: (
-                "Add obligations to those requirements, or they can never be "
+                "Add checks to those requirements, or they can never be "
                 "satisfied."
             ),
         }
@@ -587,15 +599,15 @@ def run(
         )
 
     if any_failed:
-        console.print("\n[red]Some obligations failed.[/red] Fix issues and re-run.")
+        console.print("\n[red]Some requirements failed.[/red] Fix issues and re-run.")
         raise typer.Exit(1)
     elif unverifiable_gates:
         console.print(
-            "\n[green]No obligations failed[/green] "
+            "\n[green]No requirements failed[/green] "
             "[dim](some gates could not be verified).[/dim]"
         )
     else:
-        console.print("\n[green]All obligations satisfied.[/green]")
+        console.print("\n[green]All requirements satisfied.[/green]")
 
 
 @proof_app.command("list")
@@ -665,7 +677,7 @@ def list_reqs(
             escape(req.title[:50]),
             f"[{sev_color}]{req.severity.value}[/{sev_color}]",
             f"[{status_color}]{req.status.value}[/{status_color}]",
-            ", ".join(o.gate.value for o in req.obligations),
+            _gate_words(req),
         )
 
     console.print(table)
@@ -724,9 +736,9 @@ def show(
         if items:
             console.print(f"  {field_name}: {', '.join(items)}")
 
-    console.print("\n[bold]Obligations:[/bold]")
+    console.print("\n[bold]Checks:[/bold]")
     for obl in req.obligations:
-        console.print(f"  {obl.gate.value}: {obl.status}")
+        console.print(f"  {_GATE_WORDS.get(obl.gate.value, obl.gate.value)}: {obl.status}")
 
     if req.waiver:
         # A lapsed waiver stays on the requirement as its record (#1503).
@@ -913,7 +925,9 @@ def status_cmd(
     console.print(f"  [dim]Waived:[/dim]    {counts['waived']}")
 
     if counts["open"] > 0:
-        console.print(f"\n[yellow]{counts['open']} open obligations need attention.[/yellow]")
-        console.print("[dim]Run 'cf proof run' to execute obligations.[/dim]")
+        n = counts["open"]
+        noun = "requirement needs" if n == 1 else "requirements need"
+        console.print(f"\n[yellow]{n} open {noun} attention.[/yellow]")
+        console.print("[dim]Run 'cf proof run' to check them.[/dim]")
     else:
-        console.print("\n[green]All obligations satisfied or waived.[/green]")
+        console.print("\n[green]All requirements satisfied or waived.[/green]")

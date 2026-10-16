@@ -27,3 +27,20 @@ def test_the_empty_ledger_names_both_ways_forward_and_what_each_does(tmp_path: P
     assert "cf proof ratchet" in out
     assert "record a bug" in out
     assert "tests that pass today" in out
+
+
+def test_status_counts_one_open_requirement_in_the_singular(tmp_path, monkeypatch):
+    """#1507: "1 open requirements need attention" read as a typo."""
+    import subprocess
+
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    runner.invoke(app, ["proof", "capture", "--title", "t", "--description", "d",
+                        "--where", "a.py", "--severity", "low", "--source", "qa"])
+    result = runner.invoke(app, ["proof", "status"])
+    assert "1 open requirement needs attention." in result.output, result.output

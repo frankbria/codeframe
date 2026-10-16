@@ -247,7 +247,7 @@ class TestMixedCausesAreNotCollapsedIntoALie:
         described = diagnostics.describe()
 
         assert "out of scope" in described
-        assert "no obligations" in described
+        assert "no checks" in described
 
 
 class TestTheOldSignatureStillWorks:
