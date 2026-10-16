@@ -104,7 +104,7 @@ def is_failing(req: Requirement) -> bool:
 def status_document(reqs: list[Requirement], expired: list[Requirement]) -> dict:
     counts = {"total": len(reqs), "open": 0, "satisfied": 0, "waived": 0, "failing": 0, "locked": 0}
     for req in reqs:
-        counts[req.status.value] += 1
+        counts[req.status.value] = counts.get(req.status.value, 0) + 1
         counts["failing"] += is_failing(req)
         counts["locked"] += req.source == Source.RATCHET
     return {"counts": counts, "expired_waivers": [r.id for r in expired]}

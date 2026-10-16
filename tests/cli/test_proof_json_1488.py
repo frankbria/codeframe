@@ -90,6 +90,9 @@ class TestCapture:
         )
         assert result.exit_code == 0, result.output
         assert _doc(result)["requirement"]["title"] == HOSTILE
+        assert _doc(_cf("list", "-w", str(ws), "--json"))["requirements"][0]["title"] == HOSTILE
+        shown = _doc(_cf("show", "REQ-0001", "-w", str(ws), "--json"))
+        assert shown["requirement"]["title"] == HOSTILE
 
     def test_interactive_prompts_go_to_stderr(self, ws):
         result = runner.invoke(
