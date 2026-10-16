@@ -43,12 +43,14 @@ def _get_db():
     the current directory looking for .codeframe/state.db (issue #777).
 
     Returns:
-        Initialized Database instance.
+        TokenRepository over the workspace's state.db.
 
     Raises:
         typer.Exit: If no workspace is found.
     """
-    from codeframe.platform_store.database import Database
+    import sqlite3
+
+    from codeframe.platform_store.repositories.token_repository import TokenRepository
 
     env_path = os.getenv("DATABASE_PATH")
     if env_path:
@@ -69,22 +71,18 @@ def _get_db():
         if db_path is None:
             console.print("[red]Error:[/red] No workspace found. Run 'cf init' first.")
             raise typer.Exit(1)
-    # NOT db.initialize() (#943). That runs the CONTROL-PLANE SchemaManager,
-    # which injected users, api_keys and audit_logs tables — plus a seeded
-    # admin@localhost row — into the per-workspace domain database, purely as a
-    # side effect of running `cf stats`. Connect read-only instead: the
-    # workspace's own schema is created by create_or_load_workspace, and stats
-    # only reads token_usage.
-    db = Database(db_path)
-    db.connect_readonly()
-    return db
+    # Reads only: the workspace's own schema is created by
+    # create_or_load_workspace, and stats only reads token_usage (#943).
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return TokenRepository(sync_conn=conn)
 
 
 def _get_tracker(db):
     """Create a MetricsTracker from a database instance.
 
     Args:
-        db: Initialized Database instance.
+        db: TokenRepository from _get_db().
 
     Returns:
         MetricsTracker instance.
@@ -178,7 +176,7 @@ def tokens(
 
                 console.print(model_table)
     finally:
-        db.close()
+        db.conn.close()
 
 
 @stats_app.command()
@@ -259,7 +257,7 @@ def costs(
 
             console.print(model_table)
     finally:
-        db.close()
+        db.conn.close()
 
 
 @stats_app.command("export")
@@ -305,4 +303,4 @@ def export_data(
 
         console.print(f"Exported {n} records to {escape(output)}")
     finally:
-        db.close()
+        db.conn.close()

@@ -4,10 +4,8 @@ import contextlib
 import sqlite3
 import threading
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 import logging
-
-import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +23,7 @@ class BaseRepository:
     def __init__(
         self,
         sync_conn: Optional[sqlite3.Connection] = None,
-        async_conn: Optional[aiosqlite.Connection] = None,
+        async_conn: Optional[Any] = None,
         database: Optional[Any] = None,
         sync_lock: Optional[threading.Lock] = None
     ):
@@ -165,7 +163,7 @@ class BaseRepository:
         else:
             self.conn.commit()
 
-    def _row_to_dict(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Dict[str, Any]:
+    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to a dictionary.
 
         Args:

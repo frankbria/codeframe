@@ -11,11 +11,10 @@ across agents and projects. It supports:
 
 Example:
     >>> from codeframe.lib.metrics_tracker import MetricsTracker
-    >>> from codeframe.platform_store.database import Database
+    >>> from codeframe.platform_store.repositories.token_repository import TokenRepository
     >>> from codeframe.core.models import CallType
     >>>
-    >>> db = Database("state.db")
-    >>> db.initialize()
+    >>> db = TokenRepository(sync_conn=sqlite3.connect(".codeframe/state.db"))
     >>> tracker = MetricsTracker(db=db)
     >>>
     >>> # Record token usage after LLM call (sync)
@@ -44,7 +43,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, Optional, TextIO, Union
 from codeframe.core.models import CallType, TokenUsage
-from codeframe.platform_store.database import Database
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +169,7 @@ class MetricsTracker:
     and retrieve aggregated statistics for projects and agents.
 
     Attributes:
-        db: Database instance for persistence
+        db: TokenRepository over a workspace state.db
 
     Example:
         >>> tracker = MetricsTracker(db=database)
@@ -184,11 +183,11 @@ class MetricsTracker:
         ... )
     """
 
-    def __init__(self, db: Database):
+    def __init__(self, db: TokenRepository):
         """Initialize MetricsTracker.
 
         Args:
-            db: Database instance for storing token usage records
+            db: TokenRepository for storing token usage records
         """
         self.db = db
 
