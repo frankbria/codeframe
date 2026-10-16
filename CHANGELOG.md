@@ -29,6 +29,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   satisfied requirements whose scope it intersects are re-verified and
   reopened on failure. A clean tree re-checks nothing satisfied; waived
   requirements stay out of every run.
+- **A proof run judges every named evidence test from one pytest process**
+  (#1485). It used to start one pytest per `must_pass` rule, each collecting
+  the whole suite, so re-checking a ratchet of N tests cost N processes. The
+  verdicts are the same: exact names, a missing test fails its own rule, a
+  skip is not evidence.
 
 ### Documentation
 
