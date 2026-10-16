@@ -11,9 +11,9 @@ const TITLE_MAX = 80
 
 const USAGE = [
   'Usage:',
-  '  /proof <what went wrong>   capture a bug as a permanent proof obligation',
-  '  /proof                     capture the text you selected in the transcript',
-  '  /proof ratchet [--dry-run] lock in every test that passes today',
+  '  /proof <what went wrong>                  capture a bug as a permanent proof obligation',
+  '  /proof                                    capture the text you selected in the transcript',
+  '  /proof ratchet [--dry-run] [--path GLOB]  lock in every test that passes today',
 ].join('\n')
 
 type Ran = { exitCode: number; stdout: string; stderr: string }
@@ -28,7 +28,35 @@ async function cf($: EngineInterface, args: string[], timeoutMs?: number): Promi
 }
 
 function cannotRun(failed: string): string {
-  return `proof9 could not run the codeframe CLI (${failed}).\nInstall it with: ${INSTALL}`
+  // Only a cf that never started is a missing install; a timeout is not.
+  if (/ENOENT|not found/i.test(failed)) {
+    return `proof9 could not run the codeframe CLI (${failed}).\nInstall it with: ${INSTALL}`
+  }
+  return `cf did not finish: ${failed}`
+}
+
+/** `ratchet [--dry-run] [--path GLOB]` as cf flags; undefined when not a ratchet; null when malformed. */
+function ratchetFlags(args: string): string[] | null | undefined {
+  const [first, ...rest] = args.split(/\s+/)
+  // "ratchet" followed by words is a description that happens to start with it.
+  if (first !== 'ratchet' || (rest.length && !rest[0]?.startsWith('-'))) return undefined
+  const flags: string[] = []
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i]
+    if (token === '--dry-run') flags.push(token)
+    else if (token === '--path' && rest[i + 1]) flags.push(token, rest[++i] ?? '')
+    else return null
+  }
+  return flags
+}
+
+/** A hook call that may be unavailable on a surface; undefined instead of a throw. */
+async function attempt<T>(call: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await call()
+  } catch {
+    return undefined
+  }
 }
 
 function parse<T>(ran: Ran): T | null {
@@ -51,9 +79,10 @@ type Captured = {
 }
 
 async function capture($: EngineInterface, text: string): Promise<string> {
-  const title = (text.split('\n').find(line => line.trim()) ?? text).trim().slice(0, TITLE_MAX)
+  const first = (text.split('\n').find(line => line.trim()) ?? text).trim()
+  const title = Array.from(first).slice(0, TITLE_MAX).join('').trim()
   // The repo root scopes the requirement to the whole repository (fail closed).
-  const where = (await $.session.repo())?.root ?? '.'
+  const where = (await attempt(() => $.session.repo()))?.root ?? '.'
   const ran = await cf($, [
     'proof', 'capture', '--json',
     '--title', title,
@@ -89,9 +118,9 @@ type Ratcheted = {
   per_test_scope: boolean
 }
 
-async function ratchet($: EngineInterface, dryRun: boolean): Promise<string> {
+async function ratchet($: EngineInterface, flags: string[]): Promise<string> {
   $.ui.toast('proof9: running your test suite to find the tests that pass today…')
-  const ran = await cf($, ['proof', 'ratchet', '--json', ...(dryRun ? ['--dry-run'] : [])], 600_000)
+  const ran = await cf($, ['proof', 'ratchet', '--json', ...flags], 600_000)
   if ('failed' in ran) return cannotRun(ran.failed)
   // Exit 2 with a document is "nothing to lock"; anything else non-zero is an error.
   const doc = ran.exitCode === 0 || ran.exitCode === 2 ? parse<Ratcheted>(ran) : null
@@ -101,7 +130,7 @@ async function ratchet($: EngineInterface, dryRun: boolean): Promise<string> {
   const tests = n === 1 ? 'test' : 'tests'
   const lines: string[] = []
   if (ran.exitCode === 2) lines.push('Nothing to lock: no passing tests found.')
-  else if (doc.dry_run) lines.push(`Would lock in ${n} passing ${tests} (dry run: nothing written).`)
+  else if (doc.dry_run && n) lines.push(`Would lock in ${n} passing ${tests} (dry run: nothing written).`)
   else if (n) lines.push(`✓ Locked in ${n} passing ${tests} as proof obligations.`)
   else lines.push('Every passing test is already locked in.')
 
@@ -136,9 +165,13 @@ function isOlder(found: number[], min: readonly number[]): boolean {
 }
 
 async function checkVersion($: EngineInterface): Promise<void> {
-  const ran = await cf($, ['--version'])
+  const ran = await cf($, ['--version'], 10_000)
   if ('failed' in ran) {
     $.ui.toast(`proof9 needs the codeframe CLI. Install it with: ${INSTALL}`)
+    return
+  }
+  if (ran.exitCode !== 0) {
+    $.ui.toast(`proof9: \`cf --version\` failed (${errorText(ran).split('\n')[0]}). Try: ${UPGRADE}`)
     return
   }
   const found = parseVersion(ran.stdout)
@@ -160,9 +193,10 @@ export const register: Register = on => {
 
   on('command.run', { command: 'proof' }, async ($, e) => {
     const args = e.args.trim()
-    const ratchetArgs = /^ratchet(?:\s+(--dry-run))?$/.exec(args)
-    if (ratchetArgs) return { text: await ratchet($, Boolean(ratchetArgs[1])) }
-    const text = args || (await $.ui.selection())?.text.trim()
+    const flags = ratchetFlags(args)
+    if (flags === null) return { text: USAGE }
+    if (flags) return { text: await ratchet($, flags) }
+    const text = args || (await attempt(() => $.ui.selection()))?.text.trim()
     if (!text) return { text: USAGE }
     return { text: await capture($, text) }
   })

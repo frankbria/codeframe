@@ -21,14 +21,14 @@ const CAPTURED = {
 function world(
   on: On,
   answer: (argv: readonly string[]) => Answer,
-  opts: { selection?: string; repo?: boolean } = {},
+  opts: { selection?: string; repo?: boolean | 'throws'; selectionThrows?: boolean } = {},
 ) {
   const calls: Call[] = []
   const toasts: string[] = []
   on('process.run', (_$, e) => {
     calls.push({ argv: e.argv, env: e.init?.env, timeoutMs: e.init?.timeoutMs })
     const a = answer(e.argv)
-    if (a === 'missing') throw new Error('spawn cf ENOENT')
+    if (a === 'missing') return { deny: 'failed to start: ENOENT: Executable not found in $PATH: "cf"' }
     return {
       value: {
         exitCode: a.exitCode ?? 0,
@@ -40,12 +40,16 @@ function world(
     }
   })
   // Hooks under a `$` noun call answer `{ value }`.
-  on('session.repo', () => ({
-    value: opts.repo === false ? null : { root: '/repo', remote: null, internal: false, name: null },
-  }))
-  on('ui.selection', () => ({
-    value: opts.selection === undefined ? undefined : { text: opts.selection },
-  }))
+  on('session.repo', () => {
+    if (opts.repo === 'throws') throw new Error('git unavailable')
+    return {
+      value: opts.repo === false ? null : { root: '/repo', remote: null, internal: false, name: null },
+    }
+  })
+  on('ui.selection', () => {
+    if (opts.selectionThrows) throw new Error('no surface')
+    return { value: opts.selection === undefined ? undefined : { text: opts.selection } }
+  })
   on('ui.toast', (_$, e) => {
     toasts.push(e.text)
     return { value: undefined }
@@ -111,6 +115,28 @@ describe('/proof <text>', () => {
     expect(argv[argv.indexOf('--where') + 1]).toBe('.')
   })
 
+  test('a title is cut by character, not UTF-16 unit, and trimmed', async ($, on) => {
+    const w = world(on, capture)
+    await proof($, '🐛'.repeat(79) + ' ' + 'x'.repeat(50))
+    const argv = w.calls.find(c => c.argv[2] === 'capture')?.argv ?? []
+    expect(argv[argv.indexOf('--title') + 1]).toBe('🐛'.repeat(79))
+  })
+
+  test('words after "ratchet" are a description, not the ratchet', async ($, on) => {
+    const w = world(on, capture)
+    await proof($, 'ratchet wrench test fails on CI')
+    expect(w.calls.some(c => c.argv[2] === 'capture')).toBe(true)
+    expect(w.calls.some(c => c.argv[2] === 'ratchet')).toBe(false)
+  })
+
+  test('a repo lookup that throws falls back to "."', async ($, on) => {
+    const w = world(on, capture, { repo: 'throws' })
+    const out = await proof($, 'bug')
+    const argv = w.calls.find(c => c.argv[2] === 'capture')?.argv ?? []
+    expect(argv[argv.indexOf('--where') + 1]).toBe('.')
+    expect(out.text).toContain('REQ-0003')
+  })
+
   test('a refused capture shows what cf said', async ($, on) => {
     world(on, () => ({ exitCode: 1, stderr: 'Error: not inside a git repository' }))
     const out = await proof($, 'bug')
@@ -126,6 +152,20 @@ describe('/proof with no text', () => {
     const argv = w.calls.find(c => c.argv[2] === 'capture')?.argv ?? []
     expect(argv[argv.indexOf('--description') + 1]).toBe(trace)
     expect(argv[argv.indexOf('--title') + 1]).toBe('Traceback (most recent call last):')
+  })
+
+  test('typed text wins over a selection', async ($, on) => {
+    const w = world(on, capture, { selection: 'selected trace' })
+    await proof($, 'typed words')
+    const argv = w.calls.find(c => c.argv[2] === 'capture')?.argv ?? []
+    expect(argv[argv.indexOf('--description') + 1]).toBe('typed words')
+  })
+
+  test('a selection lookup that throws is treated as no selection', async ($, on) => {
+    const w = world(on, capture, { selectionThrows: true })
+    const out = await proof($, '')
+    expect(w.calls).toEqual([])
+    expect(out.text).toContain('/proof <what went wrong>')
   })
 
   test('with no selection either, explains usage and runs nothing', async ($, on) => {
@@ -166,6 +206,48 @@ describe('/proof ratchet', () => {
     expect(out.text).toContain('Would lock in 2')
   })
 
+  test('--path is passed through with its glob', async ($, on) => {
+    const w = world(on, () => ({ stdout: JSON.stringify(RATCHETED) }))
+    await proof($, "ratchet --path tests/unit/* --dry-run")
+    expect(w.calls.find(c => c.argv[2] === 'ratchet')?.argv).toEqual([
+      'cf', 'proof', 'ratchet', '--json', '--path', 'tests/unit/*', '--dry-run',
+    ])
+  })
+
+  test('an unknown ratchet flag shows usage and creates nothing', async ($, on) => {
+    const w = world(on, capture)
+    for (const args of ['ratchet --dryrun', 'ratchet --path', 'ratchet --dry-run extra']) {
+      const out = await proof($, args)
+      expect(out.text).toContain('/proof ratchet')
+    }
+    expect(w.calls.filter(c => c.argv[1] === 'proof')).toEqual([])
+  })
+
+  test('a dry run with nothing new to lock does not say "0"', async ($, on) => {
+    world(on, () => ({
+      stdout: JSON.stringify({ ...RATCHETED, dry_run: true, locked: {}, req_ids: [] }),
+    }))
+    const out = await proof($, 'ratchet --dry-run')
+    expect(out.text).toContain('already locked in')
+    expect(out.text).not.toContain('Would lock in 0')
+  })
+
+  test('exit 2 with no document (an old cf rejecting --json) shows the error', async ($, on) => {
+    world(on, () => ({ exitCode: 2, stderr: 'No such option: --json' }))
+    const out = await proof($, 'ratchet')
+    expect(out.text).toContain('No such option: --json')
+    expect(out.text).not.toContain('Nothing to lock')
+  })
+
+  test('a timeout is reported as a timeout, without the install hint', async ($, on) => {
+    // `{ deny }` is how a hook beneath the plugin makes its call reject.
+    on('process.run', () => ({ deny: 'proof9: $.process.run(cf) timed out after 600000 ms' }))
+    on('ui.toast', () => ({ value: undefined }))
+    const out = await proof($, 'ratchet')
+    expect(out.text).toContain('timed out')
+    expect(out.text).not.toContain('uv tool install')
+  })
+
   test('nothing to lock (exit 2) says so', async ($, on) => {
     world(on, () => ({
       exitCode: 2,
@@ -184,7 +266,8 @@ describe('/proof ratchet', () => {
 
 describe('when cf is missing or too old', () => {
   test('/proof gives the install command', async ($, on) => {
-    world(on, () => 'missing')
+    on('process.run', () => ({ deny: 'ENOENT: Executable not found in $PATH: "cf"' }))
+    on('session.repo', () => ({ value: null }))
     const out = await proof($, 'bug')
     expect(out.text).toContain('uv tool install codeframe-ai')
   })
@@ -203,6 +286,15 @@ describe('when cf is missing or too old', () => {
     on('command.register', (_$, e) => ({ value: { command: e.name } }))
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
     expect(w.toasts.some(t => t.includes('0.9.5') && t.includes('uv tool upgrade codeframe-ai'))).toBe(true)
+  })
+
+  test('a failing cf --version warns instead of staying silent', async ($, on) => {
+    const w = world(on, () => ({ exitCode: 1, stderr: 'Traceback ...' }))
+    on('session.start', (_$, e) => ({ cwd: e.cwd }))
+    on('command.register', (_$, e) => ({ value: { command: e.name } }))
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    expect(w.toasts.some(t => t.includes('cf --version'))).toBe(true)
+    expect(w.calls[0]?.timeoutMs).toBe(10_000)
   })
 
   test('a current cf starts silently and registers /proof', async ($, on) => {
