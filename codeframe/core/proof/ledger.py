@@ -935,6 +935,24 @@ def save_merge_override(
         conn.close()
 
 
+def list_merge_overrides(workspace: Workspace) -> list[dict]:
+    """Every merge-gate override, oldest first: the audit trail (#1472 export)."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    try:
+        rows = conn.execute(
+            """SELECT pr_number, actor, reason, bypassed, overridden_at
+               FROM pr_merge_overrides WHERE workspace_id = ? ORDER BY id""",
+            (workspace.id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {"pr_number": r[0], "actor": r[1], "reason": r[2], "bypassed": json.loads(r[3]), "overridden_at": r[4]}
+        for r in rows
+    ]
+
+
 def get_pr_merge_override(workspace: Workspace, pr_number: int) -> Optional[dict]:
     """Fetch the latest merge-gate override record for a PR, if any."""
     _ensure_tables(workspace)

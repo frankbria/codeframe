@@ -309,6 +309,7 @@ cf blocker answer <id> "answer"
 
 # Proof
 cf proof capture | ratchet [--dry-run] [--path GLOB] | run [--full] | list | show | status | waive
+cf proof export --format html|json|pdf [--output PATH]   # evidence report (#1472)
 
 # Quality / State
 cf review && cf patch export && cf commit create -m "feat: ..."
