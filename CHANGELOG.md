@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-10-16
+
 ### Added
 
 - **`--json` on `cf proof run`, `list`, `status`, `show`, `capture` and
@@ -1402,7 +1404,8 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.6...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.7...HEAD
+[0.9.7]: https://github.com/frankbria/codeframe/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/frankbria/codeframe/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/frankbria/codeframe/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/frankbria/codeframe/compare/v0.9.3...v0.9.4
