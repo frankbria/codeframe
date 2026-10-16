@@ -39,7 +39,7 @@ const STATUS = listed([true, false])
 
 const json = (doc: unknown, exitCode = 0): Answer => ({ exitCode, stdout: JSON.stringify(doc) })
 
-function world(on: On, run: Answer, status: Answer = json(STATUS)) {
+function world(on: On, run: Answer, status: Answer = json(STATUS), opts: { commitFails?: boolean } = {}) {
   const calls: Call[] = []
   const toasts: string[] = []
   const statuses: (string | undefined)[] = []
@@ -66,6 +66,7 @@ function world(on: On, run: Answer, status: Answer = json(STATUS)) {
   // The real Bash, beneath the plugin.
   on('tool.call', { tool: 'Bash' }, (_$, e) => {
     commands.push(e.command)
+    if (opts.commitFails) return { isError: true, result: 'hook rejected', text: 'pre-commit hook failed' }
     return { result: { stdout: '[main abc123] msg', stderr: '', interrupted: false }, text: '[main abc123] msg' }
   })
   return { calls, toasts, statuses, commands }
@@ -313,8 +314,8 @@ describe('a requirement that was never proven is not called a regression (#1473 
     const w = world(on, json(NEVER_PROVEN, 1))
     await bash($, 'git commit -m x')
     const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
-    expect(toast).toMatch(/not proven yet/)
-    expect(toast).not.toMatch(/proven to work|breaks/)
+    expect(toast).toMatch(/not proven yet: its test does not pass/)
+    expect(toast).not.toMatch(/proven to work|breaks|as expected/)
   })
 
   test('Claude is told the same, and what to do for each kind', async ($, on) => {
@@ -323,7 +324,27 @@ describe('a requirement that was never proven is not called a regression (#1473 
     const said = (out.context ?? []).join('\n')
     expect(said).toMatch(/not proven yet/)
     expect(said).not.toMatch(/proven to hold/)
-    expect(said).toMatch(/fill in its draft test/i)
+    expect(said).toMatch(/still a generated draft, fill it in/i)
+    expect(said).not.toMatch(/as expected/)
     expect(w.commands).toEqual(['git commit -m x'])
+  })
+})
+
+describe('#1473 review: tell the truth about the commit and the mode', () => {
+  test('warn mode says the commit went ahead only after it did', async ($, on) => {
+    const w = world(on, json(FAILING_RUN, 1), json(STATUS), { commitFails: true })
+    await bash($, 'git commit -m x')
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast).not.toMatch(/went ahead/)
+  })
+
+  test('block mode explains the mode, where to change it, and toasts one short line', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json(FAILING_RUN, 1))
+    const out = await bash($, 'git commit -m x')
+    expect(out.deny).toMatch(/block mode/)
+    expect(out.deny).toMatch(/\/config/)
+    const toast = w.toasts.find(t => t.includes('REQ-0003')) ?? ''
+    expect(toast.length).toBeLessThan(140)
+    expect(toast).not.toEqual(out.deny)
   })
 })

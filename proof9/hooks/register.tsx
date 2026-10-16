@@ -360,7 +360,12 @@ async function selectRequirement($: EngineInterface, id: string): Promise<void> 
 }
 
 /** `2026-10-16T10:17:19.739+00:00` → `2026-10-16 10:17 UTC` (the CLI reports UTC). */
-const readableTime = (iso: string | null) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC` : 'at an unknown time')
+const readableTime = (iso: string | null) => {
+  const when = iso ? new Date(iso) : null
+  return when && !Number.isNaN(when.getTime())
+    ? `${when.toISOString().slice(0, 10)} ${when.toISOString().slice(11, 16)} UTC`
+    : 'at an unknown time'
+}
 
 /** One cell per run, oldest first: green passed, red failed, yellow verified nothing. */
 function historyCells(runs: RunSummary[], columns: number): string {
@@ -432,7 +437,7 @@ type ProofRun = {
 
 /** What a pre-commit proof run found, in the words each audience needs. */
 type Verdict =
-  | { kind: 'failing'; person: string; claude: string; deny: string }
+  | { kind: 'failing'; person: string; short: string; claude: string; deny: string }
   | { kind: 'note'; person: string }
   | { kind: 'error'; person: string }
   | { kind: 'quiet' }
@@ -472,24 +477,24 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
         ? `this breaks ${names(regressed)}, which ${regressed.length === 1 ? 'was' : 'were'} proven to work`
         : '',
       unproven.length
-        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its test fails' : 'their tests fail'}, as expected until the bug is fixed`
+        ? `${names(unproven)} ${unproven.length === 1 ? 'is' : 'are'} not proven yet: ${unproven.length === 1 ? 'its test does' : 'their tests do'} not pass`
         : '',
     ].filter(Boolean)
     return {
       kind: 'failing',
-      person: broken.length
-        ? `proof9: ${parts.join('; ')}. ${told(broken.length)}; the commit went ahead.`
-        : 'proof9: the proof run reported a failure',
+      // Whether the commit went ahead is added after it runs, never predicted.
+      person: broken.length ? `proof9: ${parts.join('; ')}. ${told(broken.length)}.` : 'proof9: the proof run reported a failure.',
+      short: `proof9 blocked the commit: ${broken.map(r => r.id).join(', ') || 'the proof run failed'}.`,
       // The run checks the working tree, which can hold more than the commit.
       claude: [
         'proof9: requirements in your working tree fail their tests:',
         ...regressed.map(r => `- ${line(r)} (was proven to work: a regression)`),
         ...unproven.map(r => `- ${line(r)} (captured, not proven yet)`),
         ...(regressed.length ? ['For a regression, fix the code so the test passes again.'] : []),
-        ...(unproven.length ? ['For one not proven yet, fill in its draft test so it fails on the bug, then fix the bug.'] : []),
+        ...(unproven.length ? ['For one not proven yet: if its test is still a generated draft, fill it in so it fails on the bug; then fix the code so it passes.'] : []),
         'Do not weaken or delete these tests. `cf proof run` re-checks them.',
       ].join('\n'),
-      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
+      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. proof9 is in block mode, which refuses commits while a requirement fails: fix the failure, or switch proof9's mode to warn in /config.`,
     }
   }
   if (doc.empty_reason === 'no_requirements') {
@@ -550,14 +555,18 @@ export const register: Register = (on, options) => {
       return { deny: `proof9 could not check this commit (${verdict.person}); block mode fails closed.` }
     }
     if (verdict.kind === 'failing' && block) {
-      $.ui.toast(verdict.deny)
+      $.ui.toast(verdict.short)
       await attempt(() => refreshLedger($))
       return { deny: verdict.deny }
     }
-    if (verdict.kind !== 'quiet') {
+    if (verdict.kind === 'error' || verdict.kind === 'note') {
       $.ui.toast(verdict.kind === 'error' ? `proof9 could not check this commit: ${verdict.person}` : verdict.person)
     }
     const ran = await next(e)
+    if (verdict.kind === 'failing') {
+      const committed = ran.deny === undefined && ran.isError !== true
+      $.ui.toast(committed ? `${verdict.person} The commit went ahead.` : verdict.person)
+    }
     await attempt(() => refreshLedger($))
     // Warn mode: Claude reads the failures after the commit's own output and can fix them now.
     return verdict.kind === 'failing' && ran.deny === undefined
