@@ -7,6 +7,9 @@
 // heredoc bodies and line continuations understood — and asks of each whether
 // its program is git and its subcommand is `commit`.
 //
+// Command substitution inside double quotes is scanned too; single quotes stay
+// opaque, as the shell keeps them.
+//
 // shortcut: not a shell parser — `sudo -u bob git commit`, aliases, functions,
 // `bash -c "git commit"`, `xargs git commit` and `find -exec git commit` are not
 // seen; upgrade if one of them matters.
@@ -21,9 +24,31 @@ const REDIRECT = /^(?:\d*|&)(?:>>?|<|>&|<&|>\|)(.*)$/
 // git's global options that take the next word as their value.
 const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'])
 
+/** The `$(…)` and backtick spans in double-quoted text, which the shell runs. */
+function substitutions(text: string): string[] {
+  const spans: string[] = []
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') {
+      i++
+    } else if (text[i] === '`') {
+      const end = text.indexOf('`', i + 1)
+      spans.push(text.slice(i + 1, end < 0 ? undefined : end))
+      i = end < 0 ? text.length : end
+    } else if (text[i] === '$' && text[i + 1] === '(') {
+      let depth = 1
+      let j = i + 2
+      for (; j < text.length && depth; j++) depth += text[j] === '(' ? 1 : text[j] === ')' ? -1 : 0
+      spans.push(text.slice(i + 2, depth ? j : j - 1))
+      i = j - 1
+    }
+  }
+  return spans
+}
+
 /** The simple commands of a command line, each as its list of words. */
 export function simpleCommands(line: string): string[][] {
   const commands: string[][] = []
+  const nested: string[][] = []
   const pendingHeredocs: { delimiter: string; tabs: boolean }[] = []
   let words: string[] = []
   let word = ''
@@ -56,7 +81,10 @@ export function simpleCommands(line: string): string[][] {
     } else if (c === '"') {
       let j = i + 1
       while (j < line.length && line[j] !== '"') j += line[j] === '\\' ? 2 : 1
-      word += line.slice(i + 1, j).replace(/\\(.)/g, '$1')
+      const quoted = line.slice(i + 1, j)
+      // Double quotes keep `$(…)` and backticks live: `OUT="$(git commit)"` commits.
+      for (const span of substitutions(quoted)) nested.push(...simpleCommands(span))
+      word += quoted.replace(/\\(.)/g, '$1')
       inWord = true
       i = j + 1
     } else if (line.startsWith('<<<', i)) {
@@ -100,7 +128,7 @@ export function simpleCommands(line: string): string[][] {
     }
   }
   endCommand()
-  return commands
+  return [...commands, ...nested]
 }
 
 /** ``words`` without its redirections, which the shell applies, not passes. */

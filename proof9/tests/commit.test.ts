@@ -34,6 +34,10 @@ describe('a commit is detected wherever git runs it', () => {
     'git 2> err.log commit -m x',
     'git commit -m x &>/dev/null',
     'if false; then :; elif git commit -m x; then :; fi',
+    'echo "Result: $(git commit -am update 2>&1)"',
+    'OUTPUT="$(git commit -am \\"fix\\" 2>&1)"',
+    'echo "`git commit -m x`"',
+    'echo "$(cd sub && $(echo x) git commit -m y)"',
   ]) {
     test(JSON.stringify(command), () => {
       expect(isGitCommit(command)).toBe(true)
@@ -55,6 +59,8 @@ describe('text that merely mentions a commit is not one', () => {
     "cat > hook.sh <<'END'\ngit commit -m x\nEND",
     'gh pr create --body "steps:\ngit commit -m x"',
     'git status > commit',
+    "echo '$(git commit -m x)'",
+    'echo "price: $5 (git commit not run)"',
     'git log 2>&1 | grep commit',
     'ls',
     '',
