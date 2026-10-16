@@ -280,3 +280,11 @@ test('a failed waive keeps the reason being typed', async ($, on) => {
   expect(w.calls.some(c => c.argv[2] === 'waive')).toBe(true)
   expect(await ui.find({ key: 'waive-reason' })).toBeDefined()
 })
+
+test('a waiver that has expired no longer hides a failure (read-only, like the merge gate)', async ($, on) => {
+  const lapsed = { ...req('REQ-0003', 'Login 500s on an empty form', true, 'waived'), waiver: { reason: 'later', expired: true } }
+  world(on, [ledger(lapsed)])
+  await start($)
+  const ui = await band($)
+  expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeDefined()
+})

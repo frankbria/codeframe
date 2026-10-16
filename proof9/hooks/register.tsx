@@ -200,6 +200,7 @@ type Listed = {
     status: string
     obligations: { gate: string; status: string }[]
     evidence_rules: { test_id: string; gate: string | null }[]
+    waiver: { expired: boolean } | null
   }[]
 }
 
@@ -225,8 +226,11 @@ async function refreshLedger($: EngineInterface): Promise<void> {
   if (!doc) return
   const reqs = doc.requirements
   // Failing as `cf proof status` counts it (#1488): not waived, a failed obligation.
+  // A lapsed waiver no longer covers it — read-only, as the merge gate decides
+  // (#1276); `list`, unlike `status`, does not revert the stored status.
+  const waived = (r: Listed['requirements'][number]) => r.status === 'waived' && !r.waiver?.expired
   const failing: Failing[] = reqs
-    .filter(r => r.status !== 'waived' && r.obligations.some(o => o.status === 'failed'))
+    .filter(r => !waived(r) && r.obligations.some(o => o.status === 'failed'))
     .map(r => {
       const gates = r.obligations.filter(o => o.status === 'failed').map(o => o.gate)
       const tests = r.evidence_rules.filter(t => t.gate !== null && gates.includes(t.gate)).map(t => t.test_id)
