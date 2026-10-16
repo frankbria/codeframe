@@ -20,6 +20,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   in the tests that pass today. It runs `cf proof … --json` by argv and needs
   codeframe 0.9.7 or later; session start says how to install or upgrade the
   CLI when it is missing or older.
+- **Opt-in telemetry records which client ran `cf`** (#1475). Usage events
+  gain a `client` field — `cli`, `proof9` (the plugin sets
+  `CODEFRAME_CLIENT=proof9`) or `other` — so plugin-driven capture and ratchet
+  can be counted. Still off by default; `PRIVACY.md` lists the field.
 
 ### Changed
 
