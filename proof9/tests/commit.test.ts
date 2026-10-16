@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { isGitCommit } from '../hooks/commit.ts'
+import { isGitCommit, simpleCommands } from '../hooks/commit.ts'
 
 describe('a commit is detected wherever git runs it', () => {
   for (const command of [
@@ -74,4 +74,10 @@ describe('text that merely mentions a commit is not one', () => {
       expect(isGitCommit(command)).toBe(false)
     })
   }
+})
+
+describe('a double-quoted span ends at its own closing quote', () => {
+  test('a $(…) holding quotes does not end the string early', () => {
+    expect(simpleCommands('echo "$(a "b c")" && d')).toEqual([['echo', '$(a "b c")'], ['d'], ['a', 'b c']])
+  })
 })
