@@ -5,7 +5,11 @@ visibly happens. The ratchet turns the tests that pass today into
 requirements, so the ledger has something to enforce from minute one —
 without inventing a single criterion.
 
-Every test here runs the fixture project's real test suite.
+Every test here runs the fixture project's real test suite, so it lives with
+the other real-pytest proof tests in tests/core rather than tests/cli: the
+Unlocked Resolution job runs tests/cli in an env whose interpreter the fixture
+projects cannot reach, and there the ratchet correctly reports "pytest is not
+in the project's dependencies".
 """
 
 import subprocess
