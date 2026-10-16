@@ -1,0 +1,14 @@
+{
+  "name": "codeframe",
+  "description": "CodeFRAME's Claude Code plugins: proof9 turns bugs into enforced proof obligations.",
+  "owner": {
+    "name": "Frank Bria"
+  },
+  "plugins": [
+    {
+      "name": "proof9",
+      "source": "./proof9",
+      "description": "Turn a bug into a permanent, enforced proof obligation."
+    }
+  ]
+}

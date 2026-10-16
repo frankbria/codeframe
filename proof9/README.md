@@ -62,6 +62,14 @@ clears once a later run passes the requirement. With an empty ledger it offers
 | `mode` | `warn` | `warn` or `block` |
 | `timeoutSeconds` | `120` | Time limit for the pre-commit run |
 
+## Install
+
+At the prompt of a Claude Code session:
+
+```
+/plugin install proof9 --marketplace frankbria/codeframe
+```
+
 ## Developing
 
 ```bash
@@ -69,3 +77,6 @@ claude plugin validate ./proof9
 claude plugin test ./proof9
 claude --plugin-dir ./proof9
 ```
+
+CI runs `validate`, `test` and a type-check against the vendored API types in
+[`tools/proof9-types/`](../tools/proof9-types/README.md).
