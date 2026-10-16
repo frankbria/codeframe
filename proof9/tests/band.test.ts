@@ -21,7 +21,9 @@ const PROPS = {
 }
 
 /** The world beneath the plugin. `lists` answers successive `cf proof list` calls. */
-function world(on: On, lists: Answer[], store: Record<string, unknown> = {}, opts: { noRepo?: boolean } = {}) {
+function world(
+  on: On, lists: Answer[], store: Record<string, unknown> = {}, opts: { noRepo?: boolean; waiveFails?: boolean } = {},
+) {
   const calls: Call[] = []
   const submitted: string[] = []
   const filled: string[] = []
@@ -37,7 +39,9 @@ function world(on: On, lists: Answer[], store: Record<string, unknown> = {}, opt
           ? { stdout: 'REQ-0003: Login 500s on an empty form\n  Evidence (1): unit FAIL' }
           : e.argv[2] === 'ratchet'
             ? { stdout: JSON.stringify({ dry_run: false, locked: { test_add: ['calc.py'] }, req_ids: ['REQ-0001'], already_locked: [], failed: [], skipped: [], unenforceable: [], per_test_scope: true }) }
-            : { stdout: '' }
+            : e.argv[2] === 'waive' && opts.waiveFails
+              ? { exitCode: 1, stderr: 'Error: Invalid date' }
+              : { stdout: '' }
     return { value: { exitCode: a.exitCode ?? 0, stdout: a.stdout ?? '', stderr: a.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('ui.toast', (_$, e) => {
@@ -256,4 +260,23 @@ test('a waived requirement is an accepted risk: no band even with a failed oblig
   await start($)
   const ui = await band($)
   expect(await ui.find({ type: 'Text', text: /REQ-0003/ })).toBeUndefined()
+})
+
+test('a gate with no named test is not presented as a test name', async ($, on) => {
+  const noRule = { ...req('REQ-0007', 'Scanner finding', true), evidence_rules: [] }
+  const w = world(on, [ledger(noRule)])
+  await start($)
+  const ui = await band($)
+  await ui.press({ key: 'fix' })
+  expect(w.submitted[0]).toContain('the unit gate (no named test)')
+})
+
+test('a failed waive keeps the reason being typed', async ($, on) => {
+  const w = world(on, [FAILING], {}, { waiveFails: true })
+  await start($)
+  const ui = await band($)
+  await ui.press({ key: 'waive' })
+  await ui.input({ key: 'waive-reason', text: 'later until 2099-02-30' })
+  expect(w.calls.some(c => c.argv[2] === 'waive')).toBe(true)
+  expect(await ui.find({ key: 'waive-reason' })).toBeDefined()
 })

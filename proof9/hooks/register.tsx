@@ -230,7 +230,7 @@ async function refreshLedger($: EngineInterface): Promise<void> {
     .map(r => {
       const gates = r.obligations.filter(o => o.status === 'failed').map(o => o.gate)
       const tests = r.evidence_rules.filter(t => t.gate !== null && gates.includes(t.gate)).map(t => t.test_id)
-      return { id: r.id, title: r.title, tests: tests.length ? tests : gates.map(g => `${g} gate`) }
+      return { id: r.id, title: r.title, tests: tests.length ? tests : gates.map(g => `the ${g} gate (no named test)`) }
     })
   const noun = reqs.length === 1 ? 'obligation' : 'obligations'
   $.ui.status(reqs.length ? `proof9 · ${reqs.length} ${noun} · ${failing.length} failing` : 'proof9 · no obligations yet')
@@ -267,11 +267,13 @@ async function waive($: EngineInterface, id: string, typed: string): Promise<voi
     $.ui.toast('proof9: a reason is required to waive a requirement.')
     return
   }
-  await update($, waivingAtom, () => null)
   const ran = await cf($, ['proof', 'waive', id, '--reason', reason, ...(m ? ['--expires', m[2] ?? ''] : [])])
   if ('failed' in ran || ran.exitCode !== 0) {
-    await notice($, `proof9 could not waive ${id}: ${'failed' in ran ? ran.failed : errorText(ran)}`)
+    // Keep the input open with what was typed; say why it was refused.
+    $.ui.toast(`proof9 could not waive ${id}: ${'failed' in ran ? ran.failed : errorText(ran)}`)
+    return
   }
+  await update($, waivingAtom, () => null)
   await refreshLedger($)
 }
 
