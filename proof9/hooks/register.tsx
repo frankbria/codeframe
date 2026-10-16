@@ -324,6 +324,7 @@ type Shown = {
 
 async function selectRequirement($: EngineInterface, id: string): Promise<void> {
   await update($, selectedAtom, () => id)
+  await update($, detailAtom, () => null) // no previous detail under the new row
   const ran = await cf($, ['proof', 'show', id, '--json'])
   // A later selection that answered first wins: never show one requirement's
   // evidence under another's name.

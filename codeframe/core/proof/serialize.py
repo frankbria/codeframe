@@ -20,7 +20,7 @@ requirement, a suite that cannot run) writes nothing to stdout.
 
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence
 
 from codeframe.core.proof.models import (
     Evidence,
@@ -113,7 +113,7 @@ def run_summary(run: ProofRun) -> dict:
 
 
 def status_document(
-    reqs: list[Requirement], expired: list[Requirement], runs: list[ProofRun] = ()
+    reqs: list[Requirement], expired: list[Requirement], runs: Sequence[ProofRun] = ()
 ) -> dict:
     counts = {"total": len(reqs), "open": 0, "satisfied": 0, "waived": 0, "failing": 0, "locked": 0}
     for req in reqs:
