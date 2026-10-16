@@ -34,6 +34,13 @@ def workspace(tmp_path: Path) -> Workspace:
     return create_or_load_workspace(tmp_path)
 
 
+def _verdicts(verdicts: dict, problem=None):
+    """What one pytest run reports per rule name (#1485)."""
+    from codeframe.core.gates import PytestVerdicts
+
+    return PytestVerdicts(verdicts, problem)
+
+
 def _gate_result(status: GateStatus, exit_code: int, output: str = "") -> GateResult:
     return GateResult(
         passed=status in (GateStatus.PASSED, GateStatus.SKIPPED),
@@ -98,7 +105,7 @@ class TestEvidenceRuleGateField:
         assert _evidence_rules_from_json(raw)[0].gate == Gate.UNIT
 
 
-# --- gates.py selector threading ---
+# --- gates.pytest_verdicts: exact names from one report (#1401, #1485) ---
 
 
 class TestPytestSelector:
@@ -110,7 +117,7 @@ class TestPytestSelector:
         match that `-k` dragged in does not."""
         from subprocess import CompletedProcess
 
-        from codeframe.core.gates import _run_pytest
+        from codeframe.core.gates import pytest_verdicts
 
         def fake_pytest(cmd, **_kw):
             report = next(a.split("=", 1)[1] for a in cmd if a.startswith("--junitxml="))
@@ -124,22 +131,22 @@ class TestPytestSelector:
             return CompletedProcess(cmd, 1, stdout="1 failed, 2 passed", stderr="")
 
         mock_run.side_effect = fake_pytest
-        check = _run_pytest(Path("/tmp"), test_selector="test_unit_foo")
+        got = pytest_verdicts(Path("/tmp"), ["test_unit_foo"])
         cmd = mock_run.call_args[0][0]
         assert cmd[cmd.index("-k") + 1] == "test_unit_foo"
-        assert check.status == GateStatus.PASSED
+        assert got.verdicts == {"test_unit_foo": "passed"}
 
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which", return_value="/usr/bin/uv")
-    def test_exit_5_with_selector_is_failed(self, _which, mock_run):
-        from codeframe.core.gates import _run_pytest
+    def test_exit_5_means_the_named_test_was_not_collected(self, _which, mock_run):
+        from codeframe.core.gates import pytest_verdicts
 
         mock_run.return_value.returncode = 5
         mock_run.return_value.stdout = "no tests ran"
         mock_run.return_value.stderr = ""
-        check = _run_pytest(Path("/tmp"), test_selector="test_unit_missing")
-        assert check.status == GateStatus.FAILED
-        assert check.exit_code == 5
+        got = pytest_verdicts(Path("/tmp"), ["test_unit_missing"])
+        assert got.problem is None
+        assert got.verdicts == {"test_unit_missing": None}
 
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which", return_value="/usr/bin/uv")
@@ -152,15 +159,6 @@ class TestPytestSelector:
         check = _run_pytest(Path("/tmp"))
         assert check.status == GateStatus.PASSED
 
-    @patch("codeframe.core.gates._ensure_dependencies_installed", return_value=(True, "ok"))
-    @patch("codeframe.core.gates._run_pytest")
-    def test_run_dispatcher_forwards_selector(self, mock_pytest, _deps, workspace):
-        from codeframe.core.gates import run
-
-        mock_pytest.return_value = GateCheck(name="pytest", status=GateStatus.PASSED)
-        run(workspace, gates=["pytest"], test_selector="test_unit_foo")
-        assert mock_pytest.call_args.kwargs.get("test_selector") == "test_unit_foo"
-
 
 # --- runner enforcement ---
 
@@ -169,37 +167,38 @@ class TestRunGateEnforcement:
     def _rule(self, test_id="test_unit_foo", must_pass=True, gate=Gate.UNIT):
         return EvidenceRule(test_id=test_id, must_pass=must_pass, gate=gate)
 
-    @patch("codeframe.core.gates.run")
-    def test_missing_named_test_fails(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_missing_named_test_fails(self, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
-        mock_run.return_value = _gate_result(GateStatus.FAILED, 5, "no tests ran")
+        mock_verdicts.return_value = _verdicts({"test_unit_foo": None})
         outcome, output = _run_gate(workspace, Gate.UNIT, [self._rule()])
         assert outcome == GateOutcome.FAILED
         assert "missing" in output.lower()
         assert "test_unit_foo" in output
-        assert mock_run.call_args.kwargs.get("test_selector") == "test_unit_foo"
+        assert mock_verdicts.call_args.args[1] == ["test_unit_foo"]
 
-    @patch("codeframe.core.gates.run")
-    def test_passing_named_test_passes(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_passing_named_test_passes(self, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
-        mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "1 passed")
+        mock_verdicts.return_value = _verdicts({"test_unit_foo": "passed"})
         outcome, output = _run_gate(workspace, Gate.UNIT, [self._rule()])
         assert outcome == GateOutcome.PASSED
         assert "test_unit_foo" in output
 
-    @patch("codeframe.core.gates.run")
-    def test_failing_named_test_fails(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_failing_named_test_fails(self, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
-        mock_run.return_value = _gate_result(GateStatus.FAILED, 1, "1 failed")
+        mock_verdicts.return_value = _verdicts({"test_unit_foo": "failed"})
         outcome, output = _run_gate(workspace, Gate.UNIT, [self._rule()])
         assert outcome == GateOutcome.FAILED
         assert "test_unit_foo" in output
 
+    @patch("codeframe.core.gates.pytest_verdicts")
     @patch("codeframe.core.gates.run")
-    def test_must_pass_false_does_not_gate(self, mock_run, workspace):
+    def test_must_pass_false_does_not_gate(self, mock_run, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
         # Only informational rules → whole-suite behavior, rule never enforced
@@ -208,26 +207,25 @@ class TestRunGateEnforcement:
             workspace, Gate.UNIT, [self._rule(must_pass=False)]
         )
         assert outcome == GateOutcome.PASSED
-        # No scoped invocation for informational rules
-        assert mock_run.call_args.kwargs.get("test_selector") is None
+        # Informational rules are never judged by name
+        mock_verdicts.assert_not_called()
 
+    @patch("codeframe.core.gates.pytest_verdicts")
     @patch("codeframe.core.gates.run")
-    def test_no_rules_runs_whole_suite(self, mock_run, workspace):
+    def test_no_rules_runs_whole_suite(self, mock_run, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
         mock_run.return_value = _gate_result(GateStatus.PASSED, 0)
         outcome, _ = _run_gate(workspace, Gate.UNIT, [])
         assert outcome == GateOutcome.PASSED
-        assert mock_run.call_args.kwargs.get("test_selector") is None
+        assert mock_run.call_args.kwargs.get("gates") == ["pytest"]
+        mock_verdicts.assert_not_called()
 
-    @patch("codeframe.core.gates.run")
-    def test_one_missing_one_passing_fails(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_one_missing_one_passing_fails(self, mock_verdicts, workspace):
         from codeframe.core.proof.runner import _run_gate
 
-        mock_run.side_effect = [
-            _gate_result(GateStatus.PASSED, 0),
-            _gate_result(GateStatus.FAILED, 5),
-        ]
+        mock_verdicts.return_value = _verdicts({"test_unit_a": "passed", "test_unit_b": None})
         outcome, output = _run_gate(
             workspace,
             Gate.UNIT,
@@ -238,8 +236,9 @@ class TestRunGateEnforcement:
         assert "test_unit_b" in output
 
     @patch("codeframe.core.gates.run")
+    @patch("codeframe.core.gates.pytest_verdicts")
     def test_sec_gate_enforces_pytest_rule_alongside_its_scanner(
-        self, mock_run, workspace
+        self, mock_verdicts, mock_run, workspace
     ):
         """A SEC requirement is NOT satisfied by a green scanner run alone when
         its named test_sec_* regression test is missing.
@@ -249,20 +248,16 @@ class TestRunGateEnforcement:
         """
         from codeframe.core.proof.runner import _run_gate
 
-        def fake_run(ws, gates=None, verbose=False, test_selector=None, **kw):
-            if test_selector:  # scoped pytest run for the rule → missing
-                return _gate_result(GateStatus.FAILED, 5, "no tests ran")
-            return _gate_result(GateStatus.PASSED, 0, "no security findings")
-
-        mock_run.side_effect = fake_run
+        mock_verdicts.return_value = _verdicts({"test_sec_xss": None})  # rule's test missing
+        mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "no security findings")
         outcome, output = _run_gate(
             workspace, Gate.SEC, [self._rule("test_sec_xss", gate=Gate.SEC)]
         )
         assert outcome == GateOutcome.FAILED
         assert "test_sec_xss" in output
-        # Both the scoped pytest run and the ruff run happened
+        # Both the rule's pytest verdict and the scanner run happened
+        assert mock_verdicts.call_args.args[1] == ["test_sec_xss"]
         called_gates = [c.kwargs.get("gates") or c.args[1] for c in mock_run.call_args_list]
-        assert ["pytest"] in called_gates
         assert ["bandit"] in called_gates
         assert ["ruff"] not in called_gates, (
             "the SEC gate must not be verified by a linter"
@@ -291,12 +286,12 @@ class TestRunGateEnforcement:
             rule = suggest_evidence_rules(gate, f"{req.id} {title}")[0]
             assert f"def {rule.test_id}(" in stubs[gate]
 
-    @patch("codeframe.core.gates.run")
-    def test_skipped_pytest_check_fails_enforcement(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_skipped_pytest_check_fails_enforcement(self, mock_verdicts, workspace):
         """pytest unavailable (SKIPPED) is not proof — the rule fails."""
         from codeframe.core.proof.runner import _run_gate
 
-        mock_run.return_value = _gate_result(GateStatus.SKIPPED, None, "pytest not found")
+        mock_verdicts.return_value = _verdicts({}, problem=GateStatus.SKIPPED.value)
         outcome, output = _run_gate(workspace, Gate.UNIT, [self._rule()])
         assert outcome == GateOutcome.FAILED
         assert "SKIPPED" in output
@@ -336,8 +331,9 @@ class TestRunGateEnforcement:
 
 
 class TestRunProofEnforcement:
+    @patch("codeframe.core.gates.pytest_verdicts")
     @patch("codeframe.core.gates.run")
-    def test_green_suite_but_missing_named_test_not_satisfied(self, mock_run, workspace):
+    def test_green_suite_but_missing_named_test_not_satisfied(self, mock_run, mock_verdicts, workspace):
         """The core of #729: a green whole-suite run must NOT satisfy a
         requirement whose named regression test was never written."""
         from codeframe.core.proof.capture import capture_requirement
@@ -347,8 +343,9 @@ class TestRunProofEnforcement:
             workspace, title="Bug", description="Logic error in calculation",
             where="src/calc.py", severity=Severity.MEDIUM, source=Source.QA,
         )
-        # Every scoped run reports "no tests matched" (the named tests don't exist)
-        mock_run.return_value = _gate_result(GateStatus.FAILED, 5, "no tests ran")
+        # The suite is green, but the named tests were never collected
+        mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "suite green")
+        mock_verdicts.side_effect = lambda repo, names: _verdicts({n: None for n in names})
 
         results = run_proof(workspace, full=True)
         req_id = list(results.keys())[0]
@@ -359,8 +356,9 @@ class TestRunProofEnforcement:
         req = ledger.get_requirement(workspace, req_id)
         assert req.status == ReqStatus.OPEN
 
+    @patch("codeframe.core.gates.pytest_verdicts")
     @patch("codeframe.core.gates.run")
-    def test_gate_none_rules_are_ignored_not_errored(self, mock_run, workspace):
+    def test_gate_none_rules_are_ignored_not_errored(self, mock_run, mock_verdicts, workspace):
         """A rule whose gate could not be resolved (legacy, unknown prefix) is
         skipped: whole-suite behavior, no enforcement, no crash."""
         from codeframe.core.proof import ledger
@@ -380,13 +378,12 @@ class TestRunProofEnforcement:
         mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "suite green")
         results = run_proof(workspace, full=True)
         assert all(o == GateOutcome.PASSED for _, o in results[req.id])
-        # No scoped runs happened — every call was a whole-suite invocation
-        assert all(
-            c.kwargs.get("test_selector") is None for c in mock_run.call_args_list
-        )
+        # No rule was judged by name — every call was a whole-suite invocation
+        mock_verdicts.assert_not_called()
 
     @patch("codeframe.core.gates.run")
-    def test_named_tests_passing_satisfies(self, mock_run, workspace):
+    @patch("codeframe.core.gates.pytest_verdicts")
+    def test_named_tests_passing_satisfies(self, mock_verdicts, mock_run, workspace):
         from codeframe.core.proof.capture import capture_requirement
         from codeframe.core.proof.runner import run_proof
 
@@ -395,6 +392,7 @@ class TestRunProofEnforcement:
             where="src/calc.py", severity=Severity.MEDIUM, source=Source.QA,
         )
         mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "1 passed")
+        mock_verdicts.side_effect = lambda repo, names: _verdicts({n: "passed" for n in names})
 
         results = run_proof(workspace, full=True)
         req_id = list(results.keys())[0]

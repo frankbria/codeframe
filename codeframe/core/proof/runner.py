@@ -8,10 +8,12 @@ and attaches evidence artifacts.
 import json
 import logging
 import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
 from codeframe.core.proof import ledger
 from codeframe.core.proof.evidence import attach_evidence
@@ -26,6 +28,9 @@ from codeframe.core.proof.models import (
 )
 from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
+
+if TYPE_CHECKING:
+    from codeframe.core import gates as core_gates
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +244,40 @@ _OUTCOME_TO_OBLIGATION_STATUS: dict[GateOutcome, str] = {
 }
 
 
+class _PytestBatch:
+    """The enforced pytest rules of one run, judged by one pytest process (#1485).
+
+    Runs lazily on the first rule that needs it, so a run whose gates are all
+    something else, or are stubbed in a test, never starts pytest.
+    """
+
+    def __init__(self, workspace: Workspace, names: Iterable[str]):
+        self.workspace = workspace
+        self.names = frozenset(names)
+        self._result: "core_gates.PytestVerdicts | None" = None
+
+    def result(self) -> "core_gates.PytestVerdicts":
+        if self._result is None:
+            from codeframe.core import gates as core_gates
+
+            self._result = core_gates.pytest_verdicts(
+                Path(self.workspace.repo_path), sorted(self.names)
+            )
+        return self._result
+
+
+#: The batch of the run in progress; None outside ``run_proof_with_diagnostics``.
+_pytest_batch: ContextVar[Optional[_PytestBatch]] = ContextVar("_pytest_batch", default=None)
+
+
+def _enforced_test_ids(req, gate: Gate) -> list[str]:
+    """The pytest-style ``must_pass`` rules ``_run_gate`` will judge for ``gate``."""
+    return [
+        r.test_id for r in req.evidence_rules
+        if r.gate == gate and r.must_pass and r.test_id.startswith("test_")
+    ]
+
+
 def _run_gate(
     workspace: Workspace,
     gate: Gate,
@@ -251,14 +290,16 @@ def _run_gate(
     checked, which is distinct from running and failing.
 
     For pytest-backed gates, each ``must_pass`` evidence rule is enforced
-    individually: pytest runs exactly the tests named the rule's ``test_id`` (#1401),
-    and a named test that doesn't exist is a FAILED obligation — a green
-    whole-suite run proves nothing about a test that was never written.
-    Rules with ``must_pass=False`` are informational only.
+    individually: its verdict counts only the tests named exactly its
+    ``test_id`` (#1401), and a named test that doesn't exist is a FAILED
+    obligation — a green whole-suite run proves nothing about a test that was
+    never written. Rules with ``must_pass=False`` are informational only.
 
-    Each enforced rule deliberately gets its own pytest subprocess — do not
-    collapse them into one ``-k "a or b"`` run; per-rule exit codes are what
-    distinguish "named test missing" from "collected but failing".
+    The per-rule verdicts come from one pytest process for the whole run
+    (``_PytestBatch``, #1485): a JUnit report already tells "not collected"
+    from "collected but failing" per name, which is what the per-rule
+    subprocesses existed for, and N of them made a ratchet's re-check
+    impractical.
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
 
@@ -266,6 +307,7 @@ def _run_gate(
     # SEC's test_sec_* rules are pytest tests even though the SEC gate's own
     # runner is ruff.
     enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
+    judged = None
     unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
 
     # A gate with no dedicated runner is still verifiable through its evidence
@@ -290,31 +332,36 @@ def _run_gate(
         all_passed = True
         unverifiable = False
 
+        if enforced:
+            batch = _pytest_batch.get()
+            # Outside a run, or for a rule the run's pre-pass did not foresee,
+            # judge this gate's rules on their own: correctness never depends
+            # on the batch, only the process count does.
+            if batch is None or any(r.test_id not in batch.names for r in enforced):
+                batch = _PytestBatch(workspace, [r.test_id for r in enforced])
+            judged = batch.result()
         for rule in enforced:
-            result = core_gates.run(
-                workspace,
-                gates=["pytest"],
-                verbose=False,
-                test_selector=rule.test_id,
-            )
-            check = result.checks[0] if result.checks else None
-            if check is None:
-                lines.append(f"{rule.test_id}: FAILED — no gate check returned")
+            verdict = judged.verdicts.get(rule.test_id)
+            if judged.problem:
+                # SKIPPED (pytest unavailable), ERROR (timeout) and a collection
+                # error are not proof — enforcement needs a positive pass,
+                # unlike the whole-suite path where SKIPPED counts as passing.
+                lines.append(f"{rule.test_id}: FAILED ({judged.problem})")
                 all_passed = False
-            elif check.exit_code == 5:
+            elif verdict is None:
                 lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
                 all_passed = False
-            elif core_gates.SKIPPED_NOT_EVIDENCE in (check.output or ""):
+            elif verdict == "skipped":
                 lines.append(f"{rule.test_id}: FAILED — {core_gates.SKIPPED_NOT_EVIDENCE}")
                 all_passed = False
-            elif check.status == core_gates.GateStatus.PASSED:
+            elif verdict == "passed":
                 lines.append(f"{rule.test_id}: passed")
             else:
-                # SKIPPED (pytest unavailable) and ERROR (timeout) are not
-                # proof — enforcement needs a positive pass, unlike the
-                # whole-suite path where SKIPPED counts as passing.
-                lines.append(f"{rule.test_id}: FAILED ({check.status.value})")
+                lines.append(f"{rule.test_id}: FAILED ({core_gates.GateStatus.FAILED.value})")
                 all_passed = False
+
+        if judged is not None and judged.problem and judged.detail:
+            lines.append(judged.detail)  # e.g. the collection error, once
 
         # A must_pass rule we cannot enforce must not silently count as
         # satisfied — that is the exact bug this module exists to prevent.
@@ -520,106 +567,122 @@ def run_proof_with_diagnostics(
 
     scope_skipped: list[str] = []
 
-    for req in reqs:
-        # Check scope intersection (unless full mode or scope detection failed)
-        # None changed_scope means "failed to detect" → run everything (fail closed)
-        if not full and changed_scope is not None:
-            if not intersects(req.scope, changed_scope):
-                scope_skipped.append(req.id)
-                continue
+    # One pytest process judges every enforced rule of the run (#1485). The
+    # pre-pass mirrors the loop's filters; a rule it misses is still judged
+    # correctly by _run_gate on its own, only in a process of its own.
+    batch = _PytestBatch(workspace, (
+        test_id
+        for req in reqs
+        if full or changed_scope is None or intersects(req.scope, changed_scope)
+        for obl in req.obligations
+        if (gate_filter is None or obl.gate == gate_filter)
+        and (enabled_gates is None or obl.gate in enabled_gates)
+        for test_id in _enforced_test_ids(req, obl.gate)
+    ))
+    token = _pytest_batch.set(batch)
+    try:
+        for req in reqs:
+            # Check scope intersection (unless full mode or scope detection failed)
+            # None changed_scope means "failed to detect" → run everything (fail closed)
+            if not full and changed_scope is not None:
+                if not intersects(req.scope, changed_scope):
+                    scope_skipped.append(req.id)
+                    continue
 
-        if not req.obligations:
-            diagnostics.no_obligations.append(req.id)
+            if not req.obligations:
+                diagnostics.no_obligations.append(req.id)
 
-        req_results: list[tuple[Gate, GateOutcome]] = []
+            req_results: list[tuple[Gate, GateOutcome]] = []
 
-        unresolved = [r.test_id for r in req.evidence_rules if r.gate is None]
-        if unresolved:
-            logger.warning(
-                "REQ %s: %d evidence rule(s) with no resolvable gate are not enforced: %s",
-                req.id, len(unresolved), unresolved,
-            )
-
-        for obl in req.obligations:
-            # Apply gate filter
-            if gate_filter and obl.gate != gate_filter:
-                continue
-
-            # Apply config-driven gate filter (None means "all allowed")
-            if enabled_gates is not None and obl.gate not in enabled_gates:
-                continue
-
-            # Run the gate, enforcing this requirement's evidence rules for it
-            gate_rules = [r for r in req.evidence_rules if r.gate == obl.gate]
-            outcome, output = _run_gate(workspace, obl.gate, gate_rules)
-
-            # Write artifact
-            artifact_path = artifact_dir / f"{req.id}_{obl.gate.value}_{run_id}.txt"
-            artifact_path.write_text(output)
-
-            # Attach evidence
-            attach_evidence(
-                workspace, req.id, obl.gate,
-                str(artifact_path), outcome, run_id,
-            )
-
-            # Update obligation status
-            obl.status = _OUTCOME_TO_OBLIGATION_STATUS[outcome]
-            req_results.append((obl.gate, outcome))
-
-        if not req_results and req.obligations:
-            # Every obligation was filtered out. Attribute it to the filter that
-            # did it ALONE, so the hint points somewhere that helps.
-            survives_gate = [
-                o for o in req.obligations
-                if gate_filter is None or o.gate == gate_filter
-            ]
-            survives_config = [
-                o for o in req.obligations
-                if enabled_gates is None or o.gate in enabled_gates
-            ]
-            if not survives_gate:
-                # --gate is the user's explicit flag, so it is named first when
-                # it is sufficient on its own.
-                diagnostics.gate_filtered.append(req.id)
-            elif not survives_config:
-                diagnostics.config_filtered.append(req.id)
-            else:
-                # Each filter leaves something; their intersection does not.
-                # Neither is "the" cause, and blaming one sends the user to fix
-                # something that is not by itself the problem (review finding).
-                diagnostics.filter_combination.append(req.id)
-
-        if req_results:
-            results[req.id] = req_results
-
-            # Always persist obligation status updates. A requirement is only
-            # SATISFIED when every obligation PASSED and all obligations ran —
-            # an unverifiable obligation leaves it OPEN (and waivable).
-            all_passed = all(o == GateOutcome.PASSED for _, o in req_results)
-            if all_passed and len(req_results) == len(req.obligations):
-                # mark_satisfied stamps satisfied_at, which the ledger column
-                # and the API field never carried before (#923).
-                ledger.mark_satisfied(workspace, req)
-            elif req.status == ReqStatus.SATISFIED and any(
-                o == GateOutcome.FAILED for _, o in req_results
-            ):
-                # A previously satisfied requirement that now FAILS is a
-                # regression: return it to OPEN so it re-fails and the merge
-                # gate sees it again (#923). Only a failure does: an obligation
-                # skipped by --gate / enabled_gates or reported UNVERIFIABLE is
-                # not evidence it broke, and reopening on that blocked merges on
-                # every plain `--gate` run once #1484 brought satisfied ones in.
-                # Persist the outcomes first: reopen_requirement reloads the row,
-                # and without this the failure never reached the obligations,
-                # so a reopened requirement did not count as failing.
-                ledger.save_requirement(workspace, req)
-                ledger.reopen_requirement(
-                    workspace, req.id,
-                    reason="obligations no longer all pass",
+            unresolved = [r.test_id for r in req.evidence_rules if r.gate is None]
+            if unresolved:
+                logger.warning(
+                    "REQ %s: %d evidence rule(s) with no resolvable gate are not enforced: %s",
+                    req.id, len(unresolved), unresolved,
                 )
-            else:
-                ledger.save_requirement(workspace, req)
+
+            for obl in req.obligations:
+                # Apply gate filter
+                if gate_filter and obl.gate != gate_filter:
+                    continue
+
+                # Apply config-driven gate filter (None means "all allowed")
+                if enabled_gates is not None and obl.gate not in enabled_gates:
+                    continue
+
+                # Run the gate, enforcing this requirement's evidence rules for it
+                gate_rules = [r for r in req.evidence_rules if r.gate == obl.gate]
+                outcome, output = _run_gate(workspace, obl.gate, gate_rules)
+
+                # Write artifact
+                artifact_path = artifact_dir / f"{req.id}_{obl.gate.value}_{run_id}.txt"
+                artifact_path.write_text(output)
+
+                # Attach evidence
+                attach_evidence(
+                    workspace, req.id, obl.gate,
+                    str(artifact_path), outcome, run_id,
+                )
+
+                # Update obligation status
+                obl.status = _OUTCOME_TO_OBLIGATION_STATUS[outcome]
+                req_results.append((obl.gate, outcome))
+
+            if not req_results and req.obligations:
+                # Every obligation was filtered out. Attribute it to the filter that
+                # did it ALONE, so the hint points somewhere that helps.
+                survives_gate = [
+                    o for o in req.obligations
+                    if gate_filter is None or o.gate == gate_filter
+                ]
+                survives_config = [
+                    o for o in req.obligations
+                    if enabled_gates is None or o.gate in enabled_gates
+                ]
+                if not survives_gate:
+                    # --gate is the user's explicit flag, so it is named first when
+                    # it is sufficient on its own.
+                    diagnostics.gate_filtered.append(req.id)
+                elif not survives_config:
+                    diagnostics.config_filtered.append(req.id)
+                else:
+                    # Each filter leaves something; their intersection does not.
+                    # Neither is "the" cause, and blaming one sends the user to fix
+                    # something that is not by itself the problem (review finding).
+                    diagnostics.filter_combination.append(req.id)
+
+            if req_results:
+                results[req.id] = req_results
+
+                # Always persist obligation status updates. A requirement is only
+                # SATISFIED when every obligation PASSED and all obligations ran —
+                # an unverifiable obligation leaves it OPEN (and waivable).
+                all_passed = all(o == GateOutcome.PASSED for _, o in req_results)
+                if all_passed and len(req_results) == len(req.obligations):
+                    # mark_satisfied stamps satisfied_at, which the ledger column
+                    # and the API field never carried before (#923).
+                    ledger.mark_satisfied(workspace, req)
+                elif req.status == ReqStatus.SATISFIED and any(
+                    o == GateOutcome.FAILED for _, o in req_results
+                ):
+                    # A previously satisfied requirement that now FAILS is a
+                    # regression: return it to OPEN so it re-fails and the merge
+                    # gate sees it again (#923). Only a failure does: an obligation
+                    # skipped by --gate / enabled_gates or reported UNVERIFIABLE is
+                    # not evidence it broke, and reopening on that blocked merges on
+                    # every plain `--gate` run once #1484 brought satisfied ones in.
+                    # Persist the outcomes first: reopen_requirement reloads the row,
+                    # and without this the failure never reached the obligations,
+                    # so a reopened requirement did not count as failing.
+                    ledger.save_requirement(workspace, req)
+                    ledger.reopen_requirement(
+                        workspace, req.id,
+                        reason="obligations no longer all pass",
+                    )
+                else:
+                    ledger.save_requirement(workspace, req)
+    finally:
+        _pytest_batch.reset(token)
 
     completed_at = datetime.now(timezone.utc)
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)

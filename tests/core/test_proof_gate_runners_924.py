@@ -60,13 +60,12 @@ class TestRunnerlessGatesUseTheirRules:
         gate = getattr(Gate, gate_name)
         ran: list[str] = []
 
-        def _fake_run(ws, gates=None, verbose=False, test_selector=None, **kw):
-            ran.append(test_selector or "whole-suite")
-            return _passing_result()
+        # Since #1485 a rule's verdict comes from one pytest run for all rules.
+        def _fake_verdicts(repo_path, names):
+            ran.extend(names)
+            return _verdicts(names, "passed")
 
-        monkeypatch.setattr(
-            "codeframe.core.gates.run", _fake_run, raising=False
-        )
+        monkeypatch.setattr("codeframe.core.gates.pytest_verdicts", _fake_verdicts)
 
         outcome, output = _run_gate(
             workspace, gate, rules=[_rule(f"{prefix}thing", gate)]
@@ -83,9 +82,8 @@ class TestRunnerlessGatesUseTheirRules:
         from codeframe.core.proof.runner import _run_gate
 
         monkeypatch.setattr(
-            "codeframe.core.gates.run",
-            lambda *a, **k: _failing_result(),
-            raising=False,
+            "codeframe.core.gates.pytest_verdicts",
+            lambda repo_path, names: _verdicts(names, "failed"),
         )
 
         outcome, output = _run_gate(
@@ -100,14 +98,13 @@ class TestRunnerlessGatesUseTheirRules:
     def test_a_missing_named_test_fails_rather_than_passes(
         self, workspace, monkeypatch
     ):
-        """exit code 5 is pytest's "nothing collected" — a stub never written."""
+        """A name the report never collected — a stub never written."""
         from codeframe.core.proof.models import Gate, GateOutcome
         from codeframe.core.proof.runner import _run_gate
 
         monkeypatch.setattr(
-            "codeframe.core.gates.run",
-            lambda *a, **k: _failing_result(code=5),
-            raising=False,
+            "codeframe.core.gates.pytest_verdicts",
+            lambda repo_path, names: _verdicts(names, None),
         )
 
         outcome, output = _run_gate(
@@ -218,35 +215,7 @@ class TestDocsStateWhatIsEnforced:
 # ---------------------------------------------------------------------------
 
 
-def _passing_result():
-    from codeframe.core import gates as core_gates
+def _verdicts(names, verdict):
+    from codeframe.core.gates import PytestVerdicts
 
-    class _Check:  # mirrors GateCheck, which always has output (#1430 reads it)
-        name = "pytest"
-        status = core_gates.GateStatus.PASSED
-        exit_code = 0
-        output = ""
-
-    class _Result:
-        checks = [_Check()]
-        notes: list[str] = []
-        passed = True
-
-    return _Result()
-
-
-def _failing_result(code: int = 1):
-    from codeframe.core import gates as core_gates
-
-    class _Check:  # mirrors GateCheck, which always has output (#1430 reads it)
-        name = "pytest"
-        status = core_gates.GateStatus.FAILED
-        exit_code = code
-        output = ""
-
-    class _Result:
-        checks = [_Check()]
-        notes: list[str] = []
-        passed = False
-
-    return _Result()
+    return PytestVerdicts({n: verdict for n in names})
