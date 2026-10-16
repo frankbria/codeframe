@@ -36,7 +36,9 @@ counts as a pass. Neither blocks. The status line shows
 
 The check covers your working tree (modified, staged and untracked files), which
 is everything the commit can contain and possibly more. It can check more than
-the commit, never less.
+the commit, never less, so an unstaged change that breaks a requirement is
+reported (and, in block mode, blocks the commit) even though it is not being
+committed. Commits made outside Claude's Bash tool are not checked.
 
 **Settings** (`/config`, or `pluginConfigs.proof9.options` in settings.json):
 

@@ -7,11 +7,16 @@
 // heredoc bodies and line continuations understood — and asks of each whether
 // its program is git and its subcommand is `commit`.
 //
-// shortcut: not a shell parser — `sudo -u bob git commit`, aliases, functions
-// and `bash -c "git commit"` are not seen; upgrade if one of them matters.
+// shortcut: not a shell parser — `sudo -u bob git commit`, aliases, functions,
+// `bash -c "git commit"`, `xargs git commit` and `find -exec git commit` are not
+// seen; upgrade if one of them matters.
 
 // Words that run the command after them.
-const WRAPPERS = new Set(['env', 'sudo', 'time', 'command', 'nohup', 'exec', '!', 'then', 'do', 'else', 'if', 'while', 'until', '{', '}'])
+const WRAPPERS = new Set(['env', 'sudo', 'time', 'command', 'nohup', 'exec', '!', 'then', 'do', 'else', 'elif', 'if', 'while', 'until', '{', '}'])
+
+// A redirection word: `>x`, `2>`, `2>&1`, `&>/dev/null`, `<in`. With no target
+// attached (`>`, `2>`), its target is the next word.
+const REDIRECT = /^(?:\d*|&)(?:>>?|<|>&|<&|>\|)(.*)$/
 
 // git's global options that take the next word as their value.
 const GIT_VALUE_OPTS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env'])
@@ -77,6 +82,11 @@ export function simpleCommands(line: string): string[][] {
     } else if (c === '$' && line[i + 1] === '(') {
       endCommand()
       i += 2
+    } else if (c === '&' && (/[<>]$/.test(word) || line[i + 1] === '>')) {
+      // Part of a redirection (`2>&1`, `&>file`), not a separator.
+      word += c
+      inWord = true
+      i++
     } else if (';&|()`'.includes(c)) {
       endCommand()
       i++
@@ -93,7 +103,19 @@ export function simpleCommands(line: string): string[][] {
   return commands
 }
 
-function runsGitCommit(words: string[]): boolean {
+/** ``words`` without its redirections, which the shell applies, not passes. */
+function withoutRedirections(words: string[]): string[] {
+  const kept: string[] = []
+  for (let i = 0; i < words.length; i++) {
+    const m = REDIRECT.exec(words[i] ?? '')
+    if (!m) kept.push(words[i] ?? '')
+    else if (!m[1]) i++ // a bare operator: its target is the next word
+  }
+  return kept
+}
+
+function runsGitCommit(all: string[]): boolean {
+  const words = withoutRedirections(all)
   let k = 0
   while (k < words.length) {
     const w = words[k] ?? ''

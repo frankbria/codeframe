@@ -258,6 +258,14 @@ describe('review fixes', () => {
     expect((out.context ?? []).join('\n')).toContain('REQ-0003')
   })
 
+  test('a failed run with no failing gate still says why it blocked', { options: { mode: 'block' } }, async ($, on) => {
+    const w = world(on, json({ ...FAILING_RUN, requirements: [] }, 1))
+    const out = await bash($, 'git commit -m x')
+    expect(w.commands).toEqual([])
+    expect(out.deny).toContain('cf proof run')
+    expect(out.deny).not.toMatch(/commit: \./)
+  })
+
   test('one obligation is singular', async ($, on) => {
     const w = world(on, json(PASSING_RUN), json({ counts: { ...STATUS.counts, total: 1, failing: 0 }, expired_waivers: [] }))
     await bash($, 'git commit -m x')

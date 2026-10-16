@@ -232,15 +232,19 @@ async function preCommitVerdict($: EngineInterface, timeoutSeconds: number): Pro
       .map(r => ({ ...r, tests: r.gates.filter(g => g.outcome === 'failed').flatMap(g => g.tests.length ? g.tests : [`${g.gate} gate`]) }))
       .filter(r => r.tests.length)
     const list = broken.map(r => `${r.id} "${r.title}": ${r.tests.join(', ')} failed`)
+    if (!list.length) list.push('the proof run reported a failure; run `cf proof run` to see it')
     return {
       kind: 'failing',
-      person: `proof9: ${broken.length} proven requirement(s) fail: ${broken.map(r => r.id).join(', ')}`,
+      person: broken.length
+        ? `proof9: ${broken.length} proven requirement(s) fail: ${broken.map(r => r.id).join(', ')}`
+        : 'proof9: the proof run reported a failure',
+      // The run checks the working tree, which can hold more than the commit.
       claude: [
-        'proof9: this commit breaks requirements that were proven to hold:',
+        'proof9: your working tree breaks requirements that were proven to hold:',
         ...list.map(l => `- ${l}`),
         'Fix the code so these tests pass again; do not weaken or delete the tests. `cf proof run` re-checks them.',
       ].join('\n'),
-      deny: `proof9 blocked the commit: ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
+      deny: `proof9 blocked the commit; in your working tree ${list.join('; ')}. Fix the failure, or set proof9's mode to warn.`,
     }
   }
   if (doc.empty_reason === 'no_requirements') {
