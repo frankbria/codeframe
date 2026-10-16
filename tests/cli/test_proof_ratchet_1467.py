@@ -154,6 +154,42 @@ class TestLockIn:
         assert result.exit_code == 0, result.output
         assert set(_ratcheted(repo)) == {"test_one"}
 
+    def test_path_does_not_lock_a_name_that_fails_outside_it(self, tmp_path):
+        """The runner judges a name over the whole suite, so a name that also
+        fails outside --path would be an obligation failing on its first run."""
+        repo = _project(tmp_path / "repo", {
+            "tests/unit/test_u.py": "def test_parse():\n    assert True\n\n\ndef test_u():\n    assert True\n",
+            "tests/int/test_i.py": "def test_parse():\n    assert False\n",
+        })
+
+        result = _ratchet(repo, "--path", "tests/unit/*")
+
+        assert result.exit_code == 0, result.output
+        assert set(_ratcheted(repo)) == {"test_u"}
+
+    def test_path_cannot_reach_outside_the_repository(self, tmp_path):
+        _project(tmp_path / "other", {"tests/test_o.py": "def test_o():\n    assert True\n"})
+        repo = _project(tmp_path / "repo", {"calc.py": CALC, "tests/test_calc.py": TESTS})
+
+        result = _ratchet(repo, "--path", "../other/tests/*")
+
+        assert result.exit_code == 2, result.output
+        assert "No tests found" in result.text
+        assert "test_o" not in result.output
+
+    def test_relative_coverage_paths_resolve_against_the_repository(self, tmp_path):
+        """`relative_files = True` stores repo-relative paths; resolving them
+        against cf's own cwd dropped every source file from the scope."""
+        repo = _project(tmp_path / "repo", {
+            "calc.py": CALC, "tests/test_calc.py": TESTS,
+            ".coveragerc": "[run]\nrelative_files = True\n",
+        })
+
+        result = _ratchet(repo)
+
+        assert result.exit_code == 0, result.output
+        assert "calc.py" in _ratcheted(repo)["test_add"].scope.files
+
     def test_without_per_test_coverage_each_obligation_covers_the_whole_repo(self, tmp_path):
         """No pytest-cov in the project: scope must fail closed, never to a
         guess that lets a change to the code under test go unexamined."""
@@ -180,6 +216,7 @@ class TestDryRun:
         assert "Would lock in 2 passing tests" in result.text
         assert "test_add" in result.output
         assert not (repo / CODEFRAME_DIR).exists()
+        assert not (repo / ".pytest_cache").exists()
 
     def test_dry_run_leaves_an_existing_ledger_unchanged(self, repo):
         ws = create_or_load_workspace(repo)
@@ -252,7 +289,7 @@ class TestNothingToLock:
         result = _ratchet(repo)
 
         assert result.exit_code == 2, result.output
-        assert "No passing tests to lock in" in result.output
+        assert "No passing tests eligible to lock in" in result.text
         assert "Locked in" not in result.output
 
 
@@ -269,6 +306,27 @@ class TestEnforcement:
         assert reqs["test_add"].status == ReqStatus.OPEN
         assert reqs["test_add"].obligations[0].status == "failed"
         assert reqs["test_sub"].status == ReqStatus.SATISFIED
+
+
+    def test_a_regression_after_the_first_proof_run_fails_a_full_run(self, repo):
+        """Once satisfied, a locked test is re-verified by --full (#923), so
+        that is the command the ratchet points at."""
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t",
+             "commit", "-qm", "init"], check=True,
+        )
+        ratchet = _ratchet(repo)
+        assert "cf proof run --full" in ratchet.text
+        first = runner.invoke(app, ["proof", "run", "--full", "-w", str(repo)])
+        assert first.exit_code == 0, first.output
+        assert _ratcheted(repo)["test_add"].status == ReqStatus.SATISFIED
+
+        (repo / "calc.py").write_text(CALC.replace("return a + b", "return a + b + 1"))
+        result = runner.invoke(app, ["proof", "run", "--full", "-w", str(repo)])
+
+        assert result.exit_code == 1, result.output
+        assert _ratcheted(repo)["test_add"].status == ReqStatus.OPEN
 
 
 class TestSourceIsReserved:

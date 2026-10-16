@@ -227,8 +227,8 @@ and to the whole repository otherwise. Failing and skipped tests are not locked
 in, and re-running adds only tests not already locked. `--dry-run` shows what it
 would lock; `--path 'tests/unit/*'` narrows it. It exits 2 when there is nothing
 to lock (no tests, or none pass) and 1 when the suite cannot run. Run
-`cf proof run` afterwards to record their evidence; until then the merge gate
-treats them as open.
+`cf proof run --full` afterwards to record their evidence; until then the merge
+gate treats them as open. Once satisfied, they are re-checked by `--full` runs.
 
 **How each gate is verified.** `UNIT` and `CONTRACT` run pytest, and `SEC` runs
 bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and

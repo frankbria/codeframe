@@ -252,24 +252,30 @@ def ratchet(
         )
 
     if not suite.passing:
-        console.print("[red]No passing tests to lock in.[/red]")
+        console.print("[red]No passing tests eligible to lock in.[/red]")
         raise typer.Exit(2)
 
     if not suite.per_file_scope:
         console.print(
-            "[yellow]⚠[/yellow] pytest-cov is not installed in this project, so each "
-            "obligation is scoped to the whole repository. Install pytest-cov to "
-            "scope each one to the files its test covers."
+            "[yellow]⚠[/yellow] Per-test coverage was not available (it needs "
+            "pytest-cov with --cov-context), so each obligation is scoped to the "
+            "whole repository. Install pytest-cov to scope each one to the files "
+            "its test covers."
         )
 
     if not dry_run and workspace is None:
         workspace = _load_or_create_workspace(root)
-    result = lock_in(workspace, suite, dry_run=dry_run)
+    try:
+        result = lock_in(workspace, suite, dry_run=dry_run)
+    except Exception as e:
+        # Any locked before the failure stay; a re-run skips them.
+        print_error(e)
+        raise typer.Exit(1)
 
     n = len(result.locked)
     tests = "test" if n == 1 else "tests"
     if dry_run:
-        console.print(f"Would lock in {n} passing {tests} as obligations (dry run — nothing written):")
+        console.print(f"Would lock in {n} passing {tests} as obligations (dry run — ledger not written):")
         for name, files in result.locked.items():
             console.print(f"  {escape(name)}  [dim]({len(files)} file(s) in scope)[/dim]")
     elif n:
@@ -277,7 +283,10 @@ def ratchet(
             f"[green]✓[/green] Locked in {n} passing {tests} as obligations. "
             "Nothing that passes today can silently stop passing."
         )
-        console.print("Run `cf proof run` to record their evidence.")
+        console.print(
+            "Run `cf proof run --full` to record their evidence, and again whenever "
+            "you want them re-checked: a plain `cf proof run` skips satisfied requirements."
+        )
     if result.already_locked:
         console.print(f"{len(result.already_locked)} passing test(s) already locked in.")
 

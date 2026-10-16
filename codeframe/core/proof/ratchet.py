@@ -65,7 +65,7 @@ class SuiteResult:
     skipped: list[str] = field(default_factory=list)
     #: Passing, but not ``test_``-prefixed, so no evidence rule can enforce it.
     unenforceable: list[str] = field(default_factory=list)
-    #: False when pytest-cov was unavailable and every scope is the whole repo.
+    #: False when per-test coverage was unavailable and every scope is the whole repo.
     per_file_scope: bool = True
 
 
@@ -94,15 +94,22 @@ def run_suite(
         RatchetError: nothing was collected, or the suite could not run.
     """
     repo_path = repo_path.resolve()
-    targets: list[str] = []
+    # --path only filters which tests are locked; the whole suite still runs,
+    # because the runner judges a name by every case of it in the suite.
+    within: Optional[list[Path]] = None
     if path_glob:
         try:
-            matches = sorted(repo_path.glob(path_glob))
+            within = [
+                m.resolve() for m in repo_path.glob(path_glob)
+                if m.resolve().is_relative_to(repo_path)
+            ]
         except (ValueError, NotImplementedError) as exc:
             raise RatchetError(f"Invalid --path {path_glob!r}: {exc}") from exc
-        if not matches:
-            raise RatchetError(f"No tests found: --path {path_glob!r} matches nothing.", no_tests=True)
-        targets = [str(m.relative_to(repo_path)) for m in matches]
+        if not within:
+            raise RatchetError(
+                f"No tests found: --path {path_glob!r} matches nothing in the repository.",
+                no_tests=True,
+            )
 
     if not shutil.which("uv") and not shutil.which("pytest"):
         raise RatchetError("The test suite could not run: pytest was not found.")
@@ -114,12 +121,17 @@ def run_suite(
         env["COVERAGE_FILE"] = str(tmp_path / "coverage.db")
         report = tmp_path / "report.xml"
         # --maxfail=0 overrides a project's -x, which would leave tests unrun.
-        cmd = base + ["--maxfail=0", f"--junitxml={report}"]
+        # xunit1 records each case's file, which --path filters on. No cache
+        # provider, so a dry run leaves no .pytest_cache behind.
+        cmd = base + [
+            "--maxfail=0", "-p", "no:cacheprovider",
+            "-o", "junit_family=xunit1", f"--junitxml={report}",
+        ]
 
         def _pytest(extra: list[str]) -> subprocess.CompletedProcess[str]:
             try:
                 return subprocess.run(
-                    cmd + extra + targets,
+                    cmd + extra,
                     cwd=repo_path,
                     env=env,
                     capture_output=True,
@@ -151,17 +163,22 @@ def run_suite(
                 f"The test suite could not run (pytest exit {result.returncode}):\n{tail}"
             )
 
-        suite = _classify(report)
-        coverage = _covered_files(tmp_path / "coverage.db", repo_path) if per_file else {}
+        suite = _classify(report, repo_path, within)
+        coverage = _covered_files(tmp_path / "coverage.db", repo_path) if per_file else None
 
-    suite.per_file_scope = per_file
+    suite.per_file_scope = coverage is not None
     for name in suite.passing:
-        suite.passing[name] = sorted(coverage.get(name, ())) or [WHOLE_REPO]
+        suite.passing[name] = sorted((coverage or {}).get(name, ())) or [WHOLE_REPO]
     return suite
 
 
-def _classify(report: Path) -> SuiteResult:
-    """Group JUnit cases by test name and judge each name as the runner will."""
+def _classify(report: Path, repo_path: Path, within: Optional[list[Path]]) -> SuiteResult:
+    """Group JUnit cases by test name and judge each name as the runner will.
+
+    With ``within`` (the --path matches), only names with a case in one of
+    those files or directories are reported — but still judged on all their
+    cases, so one failing elsewhere is not locked.
+    """
     try:
         cases = list(ET.parse(report).getroot().iter("testcase"))
     except ET.ParseError as exc:
@@ -171,7 +188,18 @@ def _classify(report: Path) -> SuiteResult:
 
     by_name: dict[str, list[ET.Element]] = defaultdict(list)
     for case in cases:
-        by_name[case.get("name", "").split("[", 1)[0]].append(case)
+        raw = case.get("name", "")
+        # `or raw`: a doctest is named `[doctest] mod.fn`, which strips to "".
+        by_name[raw.split("[", 1)[0] or raw].append(case)
+
+    def _in_path(case: ET.Element) -> bool:
+        f = (repo_path / case.get("file", "")).resolve()
+        return any(f.is_relative_to(w) for w in within or ())
+
+    if within is not None:
+        by_name = {n: cs for n, cs in by_name.items() if any(_in_path(c) for c in cs)}
+        if not by_name:
+            raise RatchetError("No tests found under --path.", no_tests=True)
 
     suite = SuiteResult()
     for name in sorted(by_name):
@@ -187,16 +215,17 @@ def _classify(report: Path) -> SuiteResult:
     return suite
 
 
-def _covered_files(data_file: Path, repo_path: Path) -> dict[str, set[str]]:
+def _covered_files(data_file: Path, repo_path: Path) -> Optional[dict[str, set[str]]]:
     """Test name → repo-relative files its coverage context touched.
 
     Reads pytest-cov's ``--cov-context=test`` data directly (coverage's data
     file is SQLite), so CodeFRAME needs no coverage dependency of its own.
-    Contexts look like ``tests/test_x.py::TestK::test_m[p]|run``. Unreadable
-    data yields ``{}``, which scopes every test to the whole repo.
+    Contexts look like ``tests/test_x.py::TestK::test_m[p]|run``. Missing or
+    unreadable data yields None: every test is then scoped to the whole repo,
+    and the caller says so.
     """
     if not data_file.exists():
-        return {}
+        return None
     try:
         conn = sqlite3.connect(data_file)
         try:
@@ -210,7 +239,7 @@ def _covered_files(data_file: Path, repo_path: Path) -> dict[str, set[str]]:
         finally:
             conn.close()
     except sqlite3.Error:
-        return {}
+        return None
 
     covered: dict[str, set[str]] = defaultdict(set)
     for context, path in rows:
@@ -218,7 +247,9 @@ def _covered_files(data_file: Path, repo_path: Path) -> dict[str, set[str]]:
         if "::" not in node:
             continue  # the empty context: import-time, not any one test
         test_file, name = node.split("::", 1)[0], node.rsplit("::", 1)[1]
-        for candidate in (Path(path), repo_path / test_file):
+        # repo_path / path: `relative_files = True` stores repo-relative paths,
+        # and an absolute one is unchanged by the join.
+        for candidate in (repo_path / path, repo_path / test_file):
             try:
                 covered[name].add(candidate.resolve().relative_to(repo_path).as_posix())
             except ValueError:
