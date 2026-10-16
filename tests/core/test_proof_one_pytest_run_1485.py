@@ -175,3 +175,59 @@ def test_pytest_verdicts_reports_each_name(ws):
         "test_unit_skipped": "skipped",
         "test_unit_gone": None,
     }
+
+
+# --- review fixes -----------------------------------------------------------
+
+
+def test_a_malformed_test_id_fails_only_its_own_rule(ws):
+    """`test_id` is free text through the API; one that pytest's -k cannot
+    parse made the whole batch a usage error and failed every rule."""
+    good = _require(ws, 1, "test_unit_a")
+    bad = _require(ws, 2, "test_unit a(b")
+
+    results = run_proof(ws, full=True)
+
+    assert _unit(results, good) == GateOutcome.PASSED
+    assert _unit(results, bad) == GateOutcome.FAILED
+
+
+def test_thousands_of_names_are_chunked_under_the_argv_limit(ws, monkeypatch):
+    """One argv string is capped at 128 KiB on Linux; a big ratchet's -k
+    expression exceeded it. Names are judged in chunks, each one process."""
+    import codeframe.core.gates as gates
+
+    monkeypatch.setattr(gates, "PYTEST_BATCH_SIZE", 2)
+    got = gates.pytest_verdicts(Path(ws.repo_path), ["test_unit_a", "test_unit_b", "test_unit_c", "test_unit_gone"])
+
+    assert _sessions(ws) == 2
+    assert got.problem is None
+    assert got.verdicts == {
+        "test_unit_a": "passed", "test_unit_b": "failed", "test_unit_c": "passed", "test_unit_gone": None,
+    }
+
+
+def test_the_default_chunk_keeps_the_k_expression_small():
+    import codeframe.core.gates as gates
+
+    longest = "test_" + "x" * 250  # longer than any generated or ratcheted name
+    assert len(" or ".join([longest] * gates.PYTEST_BATCH_SIZE)) < 128 * 1024
+
+
+def test_a_collection_error_is_shown_not_only_counted(ws):
+    from codeframe.core.proof.runner import _run_gate
+
+    (Path(ws.repo_path) / "tests" / "test_broken.py").write_text("import nope_not_a_module\n")
+
+    outcome, output = _run_gate(ws, Gate.UNIT, [EvidenceRule(test_id="test_unit_a", gate=Gate.UNIT)])
+
+    assert outcome == GateOutcome.FAILED
+    assert "tests/test_broken.py" in output
+    assert "error during collection" in output
+
+
+def test_no_names_starts_no_process(ws):
+    from codeframe.core.gates import pytest_verdicts
+
+    assert pytest_verdicts(Path(ws.repo_path), []).verdicts == {}
+    assert _sessions(ws) == 0

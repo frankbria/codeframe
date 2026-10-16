@@ -360,6 +360,9 @@ def _run_gate(
                 lines.append(f"{rule.test_id}: FAILED ({core_gates.GateStatus.FAILED.value})")
                 all_passed = False
 
+        if judged is not None and judged.problem and judged.detail:
+            lines.append(judged.detail)  # e.g. the collection error, once
+
         # A must_pass rule we cannot enforce must not silently count as
         # satisfied — that is the exact bug this module exists to prevent.
         for rule in unenforceable:

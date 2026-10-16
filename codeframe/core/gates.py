@@ -756,15 +756,42 @@ class PytestVerdicts:
     detail: str = ""
 
 
+#: Names per pytest process: keeps the -k expression far under Linux's 128 KiB
+#: cap on one argv string, which a big ratchet's expression exceeded.
+PYTEST_BATCH_SIZE = 400
+
+#: A batch runs at most the whole suite, so it gets the budget the ratchet's
+#: full-suite run has (``ratchet.SUITE_TIMEOUT_SECONDS``), not one test's 300 s.
+PYTEST_BATCH_TIMEOUT_SECONDS = 1800
+
+_RUNNABLE_NAME = re.compile(r"test_\w+")
+
+
 def pytest_verdicts(repo_path: Path, names: list[str]) -> PytestVerdicts:
-    """Run the tests named ``names`` in ONE pytest process and judge each name.
+    """Judge the tests named ``names`` from one pytest run per chunk of
+    ``PYTEST_BATCH_SIZE`` names — one process for any ordinary run (#1485).
 
     `-k "a or b"` is substring matching, so it also runs longer names; they
     cannot decide a verdict, which is taken per exact name from the JUnit
     report (#1401). --maxfail=0 overrides a project's -x, which would leave
-    exact cases unrun. A ratchet of N tests used to cost N pytest processes,
-    each collecting the whole suite; this is the one (#1485).
+    exact cases unrun. A name that is not a plain ``test_\\w+`` identifier
+    cannot be a test function and would make the whole -k expression a usage
+    error, so it is judged not collected without running.
     """
+    runnable = [n for n in names if _RUNNABLE_NAME.fullmatch(n)]
+    verdicts: dict[str, Optional[str]] = {n: None for n in names}
+    details: list[str] = []
+    for i in range(0, len(runnable), PYTEST_BATCH_SIZE):
+        chunk = _pytest_chunk(repo_path, runnable[i:i + PYTEST_BATCH_SIZE])
+        if chunk.problem:
+            return chunk
+        verdicts.update(chunk.verdicts)
+        details.append(chunk.detail)
+    return PytestVerdicts(verdicts, detail="\n".join(details))
+
+
+def _pytest_chunk(repo_path: Path, names: list[str]) -> PytestVerdicts:
+    """One pytest process for ``names``; see ``pytest_verdicts``."""
     if not shutil.which("pytest") and not shutil.which("uv"):
         return PytestVerdicts({}, GateStatus.SKIPPED.value, "pytest not found")
     base = ["uv", "run", "pytest"] if shutil.which("uv") else ["pytest"]
@@ -782,10 +809,14 @@ def pytest_verdicts(repo_path: Path, names: list[str]) -> PytestVerdicts:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=300,
+                timeout=PYTEST_BATCH_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired:
-            return PytestVerdicts({}, GateStatus.ERROR.value, "Timeout after 5 minutes")
+            return PytestVerdicts(
+                {}, GateStatus.ERROR.value, f"Timeout after {PYTEST_BATCH_TIMEOUT_SECONDS} s"
+            )
+        except OSError as exc:  # e.g. E2BIG: an argv the kernel refuses
+            return PytestVerdicts({}, GateStatus.ERROR.value, f"pytest could not start: {exc}")
         output = _summarize_pytest_output((result.stdout or "") + "\n" + (result.stderr or ""))
         if _tool_is_missing(result.returncode, result.stderr, {"pytest"}):
             return PytestVerdicts({}, GateStatus.SKIPPED.value, "pytest not found in project dependencies")
