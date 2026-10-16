@@ -231,3 +231,17 @@ def test_no_names_starts_no_process(ws):
 
     assert pytest_verdicts(Path(ws.repo_path), []).verdicts == {}
     assert _sessions(ws) == 0
+
+
+def test_a_rule_the_runs_batch_did_not_foresee_is_still_judged(ws):
+    """Correctness must not depend on the pre-pass: a rule outside the run's
+    batch is judged on its own, never read as 'not collected'."""
+    from codeframe.core.proof.runner import _pytest_batch, _PytestBatch, _run_gate
+
+    token = _pytest_batch.set(_PytestBatch(ws, ["test_unit_c"]))
+    try:
+        outcome, _ = _run_gate(ws, Gate.UNIT, [EvidenceRule(test_id="test_unit_a", gate=Gate.UNIT)])
+    finally:
+        _pytest_batch.reset(token)
+
+    assert outcome == GateOutcome.PASSED
