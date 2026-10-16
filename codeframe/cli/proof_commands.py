@@ -36,7 +36,10 @@ proof_app = typer.Typer(
 )
 
 
-JSON_HELP = "Print one JSON document on stdout; everything else goes to stderr"
+JSON_HELP = (
+    "Print one JSON document on stdout; everything else goes to stderr. "
+    "Nothing is printed on stdout when the command fails before it has a result."
+)
 
 #: The real stdout while a `--json` command runs with stdout sent to stderr.
 _json_stdout: ContextVar[Optional[TextIO]] = ContextVar("_json_stdout", default=None)
@@ -308,7 +311,7 @@ def ratchet(
     if not suite.passing:
         console.print("[red]No passing tests eligible to lock in.[/red]")
         if as_json:
-            _emit(ratchet_document(suite, None, dry_run=dry_run))
+            _emit(ratchet_document(suite, None, dry_run=dry_run, workspace_created=False))
         raise typer.Exit(2)
 
     if not suite.per_file_scope:
@@ -319,7 +322,8 @@ def ratchet(
             "its test covers."
         )
 
-    if not dry_run and workspace is None:
+    workspace_created = not dry_run and workspace is None
+    if workspace_created:
         workspace = _load_or_create_workspace(root)
     try:
         result = lock_in(workspace, suite, dry_run=dry_run)
@@ -329,7 +333,9 @@ def ratchet(
         raise typer.Exit(1)
 
     if as_json:
-        _emit(ratchet_document(suite, result, dry_run=dry_run))
+        _emit(ratchet_document(
+            suite, result, dry_run=dry_run, workspace_created=workspace_created,
+        ))
         return
     n = len(result.locked)
     tests = "test" if n == 1 else "tests"
@@ -420,7 +426,12 @@ def run(
     console.print(f"[dim]Running proof obligations ({mode})...[/dim]")
 
     run_id = _new_run_id()
-    before = {r.id: r for r in ledger.list_requirements(workspace)} if as_json else {}
+    before = {}
+    if as_json:
+        # The runner expires lapsed waivers before it runs; do it first so the
+        # snapshot shows what the run actually started from.
+        ledger.check_expired_waivers(workspace)
+        before = {r.id: r for r in ledger.list_requirements(workspace)}
     results, diagnostics = run_proof_with_diagnostics(
         workspace, full=full, gate_filter=gate_filter, run_id=run_id
     )

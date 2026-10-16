@@ -55,12 +55,14 @@ def test_locked_and_not_locked_tests_are_listed(repo):
     assert doc["failed"] == ["test_broken"]
     assert doc["already_locked"] == []
     assert isinstance(doc["per_test_scope"], bool)
+    assert doc["workspace_created"] is True
     assert "Running the test suite" in result.stderr
 
 
 def test_a_rerun_reports_already_locked(repo):
     assert _ratchet(repo).exit_code == 0
     doc = json.loads(_ratchet(repo).stdout)
+    assert doc["workspace_created"] is False
     assert doc["locked"] == {}
     assert doc["already_locked"] == ["test_add"]
 
@@ -70,6 +72,7 @@ def test_dry_run_writes_nothing(repo):
     assert result.exit_code == 0, result.output
     doc = json.loads(result.stdout)
     assert doc["dry_run"] is True
+    assert doc["workspace_created"] is False
     assert list(doc["locked"]) == ["test_add"]
     assert not (repo / CODEFRAME_DIR).exists()
 

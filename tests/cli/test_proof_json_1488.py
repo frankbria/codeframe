@@ -192,7 +192,9 @@ class TestRun:
         assert result.exit_code == 2
         doc = _doc(result)
         assert doc["requirements"] == []
+        # Nothing verified is neither a pass nor a failure (#1118).
         assert doc["passed"] is False
+        assert doc["failed"] is False
         assert doc["empty_reason"] == "no_requirements"
         assert doc["description"]
 
@@ -209,6 +211,7 @@ class TestRun:
         assert result.exit_code == 1
         doc = _doc(result)
         assert doc["passed"] is False
+        assert doc["failed"] is True
         assert doc["vacuous"] is False
         assert doc["mode"] == "full"
         assert doc["run_id"]
@@ -233,6 +236,7 @@ class TestRun:
         assert result.exit_code == 0
         doc = _doc(result)
         assert doc["passed"] is True
+        assert doc["failed"] is False
         assert doc["vacuous"] is False
         assert doc["requirements"][0]["status_after"] == "satisfied"
 
@@ -245,6 +249,19 @@ class TestRun:
         doc = _doc(result)
         assert doc["passed"] is True
         assert doc["vacuous"] is True
+
+    @patch("codeframe.core.proof.runner._run_gate")
+    def test_status_before_reflects_an_expired_waiver(self, mock_gate, ws):
+        """The runner expires lapsed waivers before it runs; the snapshot must too,
+        or a requirement the run treated as open reports status_before "waived"."""
+        mock_gate.return_value = (GateOutcome.PASSED, "ok")
+        _capture(ws)
+        assert _cf(
+            "waive", "REQ-0001", "-w", str(ws), "--reason", "r", "--expires", "2000-01-01"
+        ).exit_code == 0
+        [req] = _doc(_cf("run", "-w", str(ws), "--full", "--json"))["requirements"]
+        assert req["status_before"] == "open"
+        assert req["status_after"] == "satisfied"
 
     def test_progress_lines_stay_off_stdout(self, ws):
         result = _cf("run", "-w", str(ws), "--json")

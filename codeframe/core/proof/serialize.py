@@ -3,6 +3,19 @@
 The proof9 plugin reads these instead of parsing Rich tables. Every value is
 plain data (str, int, bool, None, list, dict), user text is passed through
 verbatim, and nothing here reports a status the ledger does not hold.
+
+A run's verdict is three fields, not one, because a run that verified nothing
+is neither a pass nor a failure (#1118):
+
+- ``failed``: an obligation failed (the CLI exits 1);
+- ``passed``: obligations ran and none failed;
+- neither: nothing ran, and ``empty_reason`` says why. The exit code then
+  depends on that reason and ``--allow-empty``, exactly as without ``--json``.
+
+``vacuous`` marks a run that passed without verifying anything (#1247).
+
+A command that fails before it has a result (no workspace, an unknown
+requirement, a suite that cannot run) writes nothing to stdout.
 """
 
 from datetime import date
@@ -120,11 +133,16 @@ def capture_document(
 
 
 def ratchet_document(
-    suite: "SuiteResult", result: Optional["RatchetResult"], *, dry_run: bool
+    suite: "SuiteResult",
+    result: Optional["RatchetResult"],
+    *,
+    dry_run: bool,
+    workspace_created: bool,
 ) -> dict:
     """``result`` is None when nothing was eligible to lock in."""
     return {
         "dry_run": dry_run,
+        "workspace_created": workspace_created,
         "locked": dict(result.locked) if result else {},
         "req_ids": list(result.req_ids) if result else [],
         "already_locked": list(result.already_locked) if result else [],
@@ -173,6 +191,7 @@ def run_document(
         "mode": "full" if full else "scope",
         "gate": gate_filter.value if gate_filter else None,
         "passed": bool(results) and not failed,
+        "failed": failed,
         "vacuous": vacuous,
         "empty_reason": empty_reason,
         "description": description,
