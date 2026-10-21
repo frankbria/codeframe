@@ -1,7 +1,8 @@
 # proof9
 
-A Claude Code plugin that turns a bug into a permanent, enforced proof obligation. It is a front door to the
-CodeFRAME CLI: every command runs `cf proof … --json`, so the ledger and its rules live in the CLI.
+A Claude Code plugin that records a bug as a requirement and checks it before every commit, so a fix
+stays fixed. It is a front door to the CodeFRAME CLI: every command runs `cf proof … --json`, so the
+ledger and its rules live in the CLI.
 
 Needs the CLI, version 0.9.7 or later:
 
@@ -30,16 +31,16 @@ when a requirement fails.
 
 When Claude runs `git commit`, proof9 runs `cf proof run` first.
 
-- **Warn (default):** failing obligations show a warning, and Claude reads which
+- **Warn (default):** failing requirements show a warning, and Claude reads which
   requirement and test failed right after the commit's output, so it can fix the
   regression in the same turn. The commit goes ahead.
-- **Block:** failing obligations deny the commit, naming the requirement and test.
+- **Block:** failing requirements deny the commit, naming the requirement and test.
   If the check itself cannot run (no `cf`, an error, the time limit), block mode
   denies too; warn mode lets the commit through with a warning.
 
 An empty ledger, or a run that verified nothing, is reported as such and never
 counts as a pass. Neither blocks. The status line shows
-`proof9 · N obligations · M failing`.
+`proof9 · N requirements · M failing`.
 
 The check covers your working tree (modified, staged and untracked files), which
 is everything the commit can contain and possibly more. It can check more than

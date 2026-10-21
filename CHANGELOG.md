@@ -7,6 +7,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- **The public copy leads with the ledger, not the pipeline.** The README
+  header, the `codeframe.sh` page and the social card all opened on "a project
+  delivery system for AI-written software" and `Think → Build → Prove → Ship` —
+  a description of the product as it was before the web UI and server came out
+  (#1512). What a visitor can install is the proof9 plugin, so the headline is
+  now what the demo already showed: a coding agent cannot quietly undo a
+  decision already made. The install line moved under the README nav, the
+  proof9 demo now precedes the CLI demo, and the Overview opens on the
+  requirement ledger with the Think/Build pipeline following it. Page title,
+  meta description, Open Graph tags and the regenerated `og-image.png` match.
+  No claim changed: the limitations block is still pinned to the README
+  (`tests/ci/test_site_1465.py`) and the differentiation wording is untouched.
+
+- **proof9's README says "requirement" where the plugin does.** The opening
+  line called a capture a "permanent, enforced proof obligation", and the warn
+  and block descriptions and the status-line example said "obligations" — the
+  plugin has said "requirement" since #1473, and the status line it documents
+  never carried the word. "Obligation" stays where it names the CLI's data
+  model (a requirement holds one obligation per gate).
+
 ### Fixed
 
 - **`cf proof export` names no local path** (#1518). The report is meant to be

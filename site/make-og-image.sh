@@ -6,9 +6,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # COPY: card strings
-LINE1="A project delivery system"
-LINE2="for AI-written software."
-PIPE="Think → Build → Prove → Ship"
+LINE1="Your coding agent can't quietly"
+LINE2="undo what you already decided."
+PIPE="/plugin install proof9"
 URL="codeframe.sh"
 
 FONTS=/usr/share/fonts/truetype/dejavu
