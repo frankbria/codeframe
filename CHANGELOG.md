@@ -18,6 +18,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   (`make-og-image.sh`). PROOF9™ is named in the trademark policy and footers
   and keeps ™ until its own registration issues.
 
+- **New README banner.** The header was still the original "CodeFrame — the
+  task-oriented agentic IDE" artwork. It is replaced by an all-outline SVG
+  (`codeframe_github_header.svg`) built from the reverse lockup and IBM Plex:
+  the current headline, the install line and a stylized proof ledger. Text is
+  converted to paths so it renders the same inside GitHub's image sandbox.
+  `site/make-banner.py` regenerates it; the 1600×500 PNG is kept for raster use.
+
 - **The public copy leads with the ledger, not the pipeline.** The README
   header, the `codeframe.sh` page and the social card all opened on "a project
   delivery system for AI-written software" and `Think → Build → Prove → Ship` —
