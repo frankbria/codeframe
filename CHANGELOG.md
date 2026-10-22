@@ -9,6 +9,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **CodeFRAME® is now marked as a registered trademark.** The U.S.
+  registration has issued, so the README title and footer, the `codeframe.sh`
+  footer, `LICENSING.md`, `docs/VISION.md` and both lockup SVGs switch from ™
+  to ®, and `TRADEMARKS.md` states the registration. The lockup's ™ glyph was
+  redrawn as ® from IBM Plex Sans SemiBold at the same position and scale, and
+  `codeframe-lockup-reverse.png` and `og-image.png` were regenerated from it
+  (`make-og-image.sh`). PROOF9™ is named in the trademark policy and footers
+  and keeps ™ until its own registration issues.
+
 - **The public copy leads with the ledger, not the pipeline.** The README
   header, the `codeframe.sh` page and the social card all opened on "a project
   delivery system for AI-written software" and `Think → Build → Prove → Ship` —

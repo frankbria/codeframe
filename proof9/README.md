@@ -90,3 +90,8 @@ claude --plugin-dir ./proof9
 
 CI runs `validate`, `test` and a type-check against the vendored API types in
 [`tools/proof9-types/`](../tools/proof9-types/README.md).
+
+---
+
+PROOF9™ is a trademark and CodeFRAME® is a registered trademark of Noatak
+Enterprises, LLC, dba Bria Strategy Group. See [TRADEMARKS.md](../TRADEMARKS.md).

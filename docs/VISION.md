@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-15
 
-This document is the north star for CodeFRAME. It is not a roadmap, a spec, or a task list. It describes where the project is going and why. Tactical decisions should be evaluated against this vision.
+This document is the north star for CodeFRAME®. It is not a roadmap, a spec, or a task list. It describes where the project is going and why. Tactical decisions should be evaluated against this vision.
 
 ---
 
@@ -65,7 +65,7 @@ This is where CodeFRAME's differentiation is sharpest: **quality memory** -- of 
 
 Traditional quality processes are amnesiac. They test what someone remembered to write tests for. If a bug slips through and gets fixed, the fix might include a test -- or it might not. There is no systematic mechanism to ensure that every failure becomes a permanent proof obligation.
 
-PROOF9 is that mechanism. It has two parts:
+PROOF9™ is that mechanism. It has two parts:
 
 **The gates.** Nine categories of evidence that code must produce:
 

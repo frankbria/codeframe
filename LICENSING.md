@@ -7,8 +7,8 @@ page explains, in plain language, what that means for you.
 > the binding text. When in doubt, consult a lawyer.
 
 > **Code vs. brand.** Apache-2.0 licenses the **code**. It does **not** grant any
-> right to the **CodeFRAME™ name or logo**, which are trademarks covered
-> separately (Section 6 of the license says so explicitly) — see
+> right to the **CodeFRAME® name or logo** or the **PROOF9™** name, which are
+> trademarks covered separately (Section 6 of the license says so explicitly) — see
 > [TRADEMARKS.md](TRADEMARKS.md). You can fork the code, but a fork must use a
 > different name.
 
