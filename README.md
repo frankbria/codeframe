@@ -1,4 +1,4 @@
-![CodeFRAME Header](./codeframe_github_header_1600x500.png)
+![CodeFRAME: your coding agent can't quietly undo what you already decided. Install: /plugin install proof9](./codeframe_github_header.svg)
 
 <h1 align="center">CodeFRAME®</h1>
 
