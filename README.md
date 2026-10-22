@@ -3,9 +3,9 @@
 <h1 align="center">CodeFRAME™</h1>
 
 <p align="center">
-  <strong>A project delivery system for AI-written software.</strong><br>
-  CodeFRAME owns everything before and after the code: requirements, task planning, verification and release.<br>
-  The coding itself goes to the agent of your choice.
+  <strong>Your coding agent can&rsquo;t quietly undo what you already decided.</strong><br>
+  Every bug you fix once, fixed forever: recorded as a requirement, locked to the code it affects,<br>
+  and checked before every commit. Regression memory for coding agents.
 </p>
 
 <p align="center">
@@ -27,21 +27,28 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+<p align="center">
+  <code>/plugin install proof9 --marketplace frankbria/codeframe</code><br>
+  <sub>At a Claude Code prompt. Needs the <code>cf</code> CLI: <code>uv tool install codeframe-ai</code>.</sub>
+</p>
+
 ---
 
 ## Overview
 
-Coding agents have become very good at writing code, but writing code is not
-the same as shipping software. Before the code, someone decides what to build,
-breaks it into tasks an agent can finish, and resolves the ambiguities. After
-it, someone checks that it works, makes sure old bugs stay fixed, and merges
-with confidence. Today that someone is still you.
+Coding agents have become very good at writing code. What they have no memory
+of is what already went wrong. A bug you found, fixed and moved on from is, to
+the agent, just more code it is free to change next week.
 
-CodeFRAME automates those two edges. It turns an idea into a PRD and a
-dependency-ordered task graph, delegates each task to **Claude Code, Codex,
-OpenCode, Kilocode** or its built-in ReAct agent, verifies the result against
-an evidence-based quality ledger, and refuses to merge while a known problem is
-still open.
+CodeFRAME gives it that memory. A defect is recorded as a **requirement**,
+scoped to the code it affects, with a named test that proves it stays fixed.
+Every later change to that code is checked against it — before the commit in a
+Claude Code session, and again before the merge. Nothing is dropped silently:
+a requirement is released only by a recorded waiver.
+
+The same CLI also handles the work before the code — requirements discovery,
+task decomposition, and delegating each task to **Claude Code, Codex, OpenCode,
+Kilocode** or its built-in agent.
 
 | Stage | What CodeFRAME does | Commands |
 |---|---|---|
@@ -71,17 +78,6 @@ vacuous rather than green, and every waiver records who approved it, why, and
 
 ## See it in action
 
-### Command line
-
-The CLI is the primary interface and needs no server. Below, a real session
-initializes a workspace, imports a PRD, generates 18 dependency-ordered tasks
-with one LLM call, and captures a bug as a PROOF9 requirement.
-
-<p align="center">
-  <img src="docs/images/cli-tour.gif" alt="Terminal session: cf init, cf prd add, cf tasks generate producing 18 tasks, cf tasks list with dependencies, cf proof capture, cf proof status" width="820">
-</p>
-<p align="center"><sub>Sped up; the LLM wait is trimmed. Full walkthrough and command reference: <a href="docs/CLI_GUIDE.md">CLI guide</a>.</sub></p>
-
 ### In Claude Code
 
 The [proof9 plugin](proof9/README.md) brings the proof ledger into a Claude
@@ -97,6 +93,17 @@ requirement with its evidence and run history.
 A real session on codeframe 0.9.7 (cast: [`docs/images/proof9-loop.cast`](docs/images/proof9-loop.cast)).
 Asked for a change that would undo a past decision, Claude finds the locked
 requirement, keeps it, and says what it would take to change it on purpose.
+
+### Command line
+
+The CLI is the primary interface and needs no server. Below, a real session
+initializes a workspace, imports a PRD, generates 18 dependency-ordered tasks
+with one LLM call, and captures a bug as a PROOF9 requirement.
+
+<p align="center">
+  <img src="docs/images/cli-tour.gif" alt="Terminal session: cf init, cf prd add, cf tasks generate producing 18 tasks, cf tasks list with dependencies, cf proof capture, cf proof status" width="820">
+</p>
+<p align="center"><sub>Sped up; the LLM wait is trimmed. Full walkthrough and command reference: <a href="docs/CLI_GUIDE.md">CLI guide</a>.</sub></p>
 
 ---
 
