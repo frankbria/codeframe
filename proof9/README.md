@@ -40,7 +40,7 @@ When Claude runs `git commit`, proof9 runs `cf proof run` first.
 
 An empty ledger, or a run that verified nothing, is reported as such and never
 counts as a pass. Neither blocks. The status line shows
-`proof9 · N requirements · M failing`.
+`proof9: N requirements · M failing`.
 
 The check covers your working tree (modified, staged and untracked files), which
 is everything the commit can contain and possibly more. It can check more than

@@ -44,7 +44,7 @@ CodeFRAME gives it that memory. A defect is recorded as a **requirement**,
 scoped to the code it affects, with a named test that proves it stays fixed.
 Every later change to that code is checked against it — before the commit in a
 Claude Code session, and again before the merge. Nothing is dropped silently:
-m waiver records who allowed it, why, and when it expires.
+a requirement is released only by a recorded waiver.
 
 The same CLI also handles the work before the code — requirements discovery,
 task decomposition, and delegating each task to **Claude Code, Codex, OpenCode,
