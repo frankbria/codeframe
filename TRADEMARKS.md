@@ -1,17 +1,22 @@
-# CodeFRAME Trademark Policy
+# CodeFRAME and PROOF9 Trademark Policy
 
-> This policy explains how you may and may not use the CodeFRAME name and logo.
-> It is intentionally conservative and is **not legal advice**; it may be revised
-> as the trademark application progresses.
+> This policy explains how you may and may not use the CodeFRAME and PROOF9
+> names and the CodeFRAME logo. It is intentionally conservative and is **not
+> legal advice**; it may be revised as the owner's trademark filings progress.
 
 ## Ownership
 
-**CodeFRAME™** and the CodeFRAME logo are trademarks of **Noatak Enterprises,
-LLC, dba Bria Strategy Group** ("the owner"). A U.S. trademark application for
-the CodeFRAME mark is pending. All rights are reserved.
+**CodeFRAME®** is a registered trademark of **Noatak Enterprises, LLC, dba
+Bria Strategy Group** ("the owner") in the United States. The CodeFRAME logo
+and **PROOF9™** (also written `proof9`, the name of the Claude Code plugin) are
+trademarks of the owner. All rights are reserved.
 
-The ™ symbol is used because the mark is not yet federally registered; it will
-be updated to ® if and when registration issues.
+CodeFRAME carries ® because its U.S. registration has issued. PROOF9 carries ™
+because it is not yet federally registered; it will be updated to ® if and when
+registration issues.
+
+Everything below applies to both names: wherever it says "CodeFRAME", read
+"CodeFRAME or PROOF9".
 
 ## The code license does not grant trademark rights
 
@@ -50,8 +55,10 @@ If you maintain a fork, please give it a distinct name and may say, for example,
 
 ## Using the mark correctly
 
-- Write it as **CodeFRAME** and include the ™ symbol on first or most prominent
-  use: **CodeFRAME™**.
+- Write it as **CodeFRAME** and include the ® symbol on first or most prominent
+  use: **CodeFRAME®**.
+- Write the plugin's mark as **PROOF9** (or `proof9` where it names the plugin)
+  and include the ™ symbol on first or most prominent use: **PROOF9™**.
 - Use it as an adjective modifying a noun ("the CodeFRAME platform"), not as a
   verb or a generic noun.
 - `codeframe-ai` (the PyPI package) and `cf` (the command) are technical

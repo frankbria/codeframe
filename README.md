@@ -1,6 +1,6 @@
 ![CodeFRAME Header](./codeframe_github_header_1600x500.png)
 
-<h1 align="center">CodeFRAME™</h1>
+<h1 align="center">CodeFRAME®</h1>
 
 <p align="center">
   <strong>Your coding agent can&rsquo;t quietly undo what you already decided.</strong><br>
@@ -54,7 +54,7 @@ Kilocode** or its built-in agent.
 |---|---|---|
 | **Think** | Socratic requirements discovery, ambiguity stress-testing, task decomposition with dependencies | `cf prd generate` · `cf prd stress-test` · `cf tasks generate` |
 | **Build** | Runs each task on the engine you choose, with verification gates, self-correction, stall detection and human-in-the-loop blockers | `cf work start --engine …` · `cf work batch run` |
-| **Prove** | **PROOF9**: every glitch becomes a permanent requirement, verified across nine gates with checksummed evidence | `cf proof capture` · `cf proof run` |
+| **Prove** | **PROOF9™**: every glitch becomes a permanent requirement, verified across nine gates with checksummed evidence | `cf proof capture` · `cf proof run` |
 | **Ship** | Pull requests carry the proof report; merge is blocked while an in-scope requirement is open | `cf pr create` · `cf pr merge` |
 
 The result is a closed loop: a bug found in production becomes a requirement,
@@ -418,9 +418,9 @@ commercial and closed-source products. Keep the license and [NOTICE](NOTICE)
 file with any copy you distribute, and mark the files you change. See
 [LICENSING.md](LICENSING.md) for a plain-language explanation.
 
-The **CodeFRAME™ name and logo are trademarks** of Noatak Enterprises, LLC,
-dba Bria Strategy Group, and are not licensed under Apache-2.0. See
-[TRADEMARKS.md](TRADEMARKS.md).
+**CodeFRAME® is a registered trademark**, and the CodeFRAME logo and
+**PROOF9™** are trademarks, of Noatak Enterprises, LLC, dba Bria Strategy Group.
+None of them are licensed under Apache-2.0. See [TRADEMARKS.md](TRADEMARKS.md).
 
 ---
 
@@ -431,4 +431,4 @@ dba Bria Strategy Group, and are not licensed under Apache-2.0. See
   <a href="https://github.com/frankbria/codeframe/tree/main/docs">Documentation</a>
 </p>
 
-<p align="center"><sub>CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</sub></p>
+<p align="center"><sub>CodeFRAME® is a registered trademark and PROOF9™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</sub></p>
