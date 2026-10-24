@@ -18,7 +18,7 @@ jobs:
     # null `sender` compares false, so it fails closed.
     # Then: only review substantial changes (5+ files, or 20+ additions/deletions).
     # Same-repo head only (#1221): fork PRs are not offered `secrets.*` either,
-    # so ZHIPU_API_KEY would be empty; skip rather than misreport it.
+    # so MODEL_API_KEY would be empty; skip rather than misreport it.
     if: |
       github.event.pull_request.user.type == 'User' &&
       github.event.sender.type == 'User' &&
@@ -26,7 +26,7 @@ jobs:
       (github.event.pull_request.changed_files >= 5 ||
        github.event.pull_request.additions >= 20 ||
        github.event.pull_request.deletions >= 20)
-    uses: frankbria/glm-review/.github/workflows/review.yml@21fea324f518b964919709eebbbb9f5b3acde489 # main
+    uses: frankbria/glm-review/.github/workflows/review.yml@694b8104c462f47ace9112dfd46ee4c5954c75d6 # main @ 2026-10-24
     # `issues: write` and `id-token: write` are gone (#1167). They were not
     # optional on the old pin: GitHub fails a run when a caller grants less than
     # the called job requests, and b877d15's job declared both. Upstream dropped
@@ -67,6 +67,8 @@ jobs:
     # `debug_full_output` below to true for incremental per-message logging that
     # survives the kill, read the failing run, then turn it back off.
     with:
+      base_url: https://api.kimi.com/coding/
+      model: k3[1m]
       # Present and explicitly false so the incident lever above is a one-word
       # edit rather than a "which input was it, and does this job even take a
       # `with:` block?" at the time you least want that question. False is also
@@ -78,4 +80,4 @@ jobs:
       contents: read
       pull-requests: write
     secrets:
-      ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
