@@ -492,12 +492,13 @@ wheels = [
 
 [[package]]
 name = "codeframe-ai"
-version = "0.9.7"
+version = "0.9.8"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
     { name = "bandit" },
+    { name = "certifi" },
     { name = "cryptography" },
     { name = "filelock" },
     { name = "gitpython" },
@@ -556,16 +557,17 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.14.0" },
+    { name = "aiohttp", specifier = ">=3.14.4" },
     { name = "anthropic", specifier = ">=1.0,<2" },
     { name = "bandit", specifier = ">=1.8.6" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.3.1" },
+    { name = "certifi", specifier = ">=2026.10.19" },
     { name = "cryptography", specifier = ">=46.0.7" },
     { name = "e2b", marker = "extra == 'cloud'", specifier = ">=2.0.0" },
     { name = "e2b", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.109.0" },
-    { name = "filelock", specifier = ">=3.0" },
-    { name = "gitpython", specifier = ">=3.1.60,<4" },
+    { name = "filelock", specifier = ">=4.2.1" },
+    { name = "gitpython", specifier = ">=3.2.1,<4" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "hypothesis", specifier = ">=6.148.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0.0" },

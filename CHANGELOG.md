@@ -7,6 +7,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-10-24
+
+### Security
+
+- **Dependency floors raised past published advisories.** 0.9.7 allowed an
+  install to resolve vulnerable versions; these floors now rule them out:
+  `gitpython>=3.2.1` (submodule `.git` path checked only after cloning —
+  RCE), `aiohttp>=3.14.4` (request smuggling, FD and memory exhaustion,
+  cookie-scope bugs), `filelock>=4.2.1` (symlink/journal planting on
+  `ReadWriteLock`) and a new direct `certifi>=2026.10.19` (older bundles trust
+  emSign roots whose intermediate CA keys were compromised). The lockfile
+  moved with them in #1533.
+
 ### Changed
 
 - **CodeFRAME® is now marked as a registered trademark.** The U.S.
@@ -1468,7 +1481,8 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.7...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.8...HEAD
+[0.9.8]: https://github.com/frankbria/codeframe/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/frankbria/codeframe/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/frankbria/codeframe/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/frankbria/codeframe/compare/v0.9.4...v0.9.5
