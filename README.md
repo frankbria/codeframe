@@ -1,5 +1,3 @@
-![CodeFRAME: your coding agent can't quietly undo what you already decided. Install: /plugin install proof9](./codeframe_github_header.svg)
-
 <h1 align="center">CodeFRAME®</h1>
 
 <p align="center">
@@ -9,13 +7,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-beta-orange" alt="Status: beta">
   <a href="https://pypi.org/project/codeframe-ai/"><img src="https://img.shields.io/pypi/v/codeframe-ai" alt="PyPI"></a>
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <a href="https://github.com/frankbria/codeframe/actions/workflows/test.yml"><img src="https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/coverage-80%25-brightgreen" alt="Coverage">
-  <a href="https://x.com/FrankBria18044"><img src="https://img.shields.io/twitter/follow/FrankBria18044?style=social" alt="Follow on X"></a>
 </p>
 
 <p align="center">
@@ -27,10 +23,26 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+At a Claude Code prompt:
+
+```
+/plugin install proof9 --marketplace frankbria/codeframe
+```
+
+The plugin needs the `cf` CLI on your `PATH`: `uv tool install codeframe-ai`.
+
 <p align="center">
-  <code>/plugin install proof9 --marketplace frankbria/codeframe</code><br>
-  <sub>At a Claude Code prompt. Needs the <code>cf</code> CLI: <code>uv tool install codeframe-ai</code>.</sub>
+  <img src="docs/images/proof9-loop.gif" alt="Claude Code session with the proof9 plugin: asked to make shipping a flat $5 per order, Claude reads the ledger, keeps free shipping over $50 because two locked requirements depend on it, commits with all 4 requirements passing, and the /proof pane shows every requirement satisfied" width="820">
 </p>
+
+A real session on codeframe 0.9.7 (cast: [`docs/images/proof9-loop.cast`](docs/images/proof9-loop.cast)).
+Asked for a change that would undo a past decision, Claude finds the locked
+requirement, keeps it, and says what it would take to change it on purpose.
+
+**TDD protects your code. This protects your tests.** Your agent can edit a test
+as easily as it can edit the code, and when a test is inconvenient that is often
+what it edits. A requirement is a test it cannot quietly drop: releasing one takes
+a waiver with a name, a reason and an expiry date.
 
 ---
 
@@ -46,26 +58,20 @@ Every later change to that code is checked against it — before the commit in a
 Claude Code session, and again before the merge. Nothing is dropped silently:
 a requirement is released only by a recorded waiver.
 
-The same CLI also handles the work before the code — requirements discovery,
-task decomposition, and delegating each task to **Claude Code, Codex, OpenCode,
-Kilocode** or its built-in agent.
-
-| Stage | What CodeFRAME does | Commands |
-|---|---|---|
-| **Think** | Socratic requirements discovery, ambiguity stress-testing, task decomposition with dependencies | `cf prd generate` · `cf prd stress-test` · `cf tasks generate` |
-| **Build** | Runs each task on the engine you choose, with verification gates, self-correction, stall detection and human-in-the-loop blockers | `cf work start --engine …` · `cf work batch run` |
-| **Prove** | **PROOF9™**: every glitch becomes a permanent requirement, verified across nine gates with checksummed evidence | `cf proof capture` · `cf proof run` |
-| **Ship** | Pull requests carry the proof report; merge is blocked while an in-scope requirement is open | `cf pr create` · `cf pr merge` |
-
-The result is a closed loop: a bug found in production becomes a requirement,
-and that requirement is checked on every build that follows.
-
 Other tools remember what your reviewers prefer. CodeFRAME remembers what
 actually broke, and proves it stays fixed: evidence is checksummed and bound to
 the run and gate that produced it, a run that verified nothing is reported as
 vacuous rather than green, and every waiver records who approved it, why, and
 (when set) when it expires. Where each of those lives in the code is listed in
 [VISION.md](docs/VISION.md#prove-is-the-output-any-good).
+
+The same CLI also covers the work before the code — requirements discovery, task
+decomposition, and delegating each task to **Claude Code, Codex, OpenCode,
+Kilocode** or its built-in agent. See [Features](#features).
+
+**Proof of substance.** 5,000+ tests with an 80% coverage floor enforced in CI,
+and a [sample evidence report](https://codeframe.sh/sample-evidence-report.html)
+showing what a run actually produces.
 
 > [!NOTE]
 > **CodeFRAME is in public beta (`0.9.8`).** The Golden Path CLI
@@ -85,14 +91,6 @@ Code session: `/proof` captures a bug or locks in passing tests, every commit
 Claude makes is checked against the ledger first, and a failing requirement
 shows above the prompt. A ledger pane beside the transcript lists every
 requirement with its evidence and run history.
-
-<p align="center">
-  <img src="docs/images/proof9-loop.gif" alt="Claude Code session with the proof9 plugin: asked to make shipping a flat $5 per order, Claude reads the ledger, keeps free shipping over $50 because two locked requirements depend on it, commits with all 4 requirements passing, and the /proof pane shows every requirement satisfied" width="820">
-</p>
-
-A real session on codeframe 0.9.7 (cast: [`docs/images/proof9-loop.cast`](docs/images/proof9-loop.cast)).
-Asked for a change that would undo a past decision, Claude finds the locked
-requirement, keeps it, and says what it would take to change it on purpose.
 
 ### Command line
 
@@ -206,6 +204,14 @@ uv run cf --help
 
 ## Features
 
+| Stage | What CodeFRAME does | Commands |
+|---|---|---|
+| **Think** | Socratic requirements discovery, ambiguity stress-testing, task decomposition with dependencies | `cf prd generate` · `cf prd stress-test` · `cf tasks generate` |
+| **Build** | Runs each task on the engine you choose, with verification gates, self-correction, stall detection and human-in-the-loop blockers | `cf work start --engine …` · `cf work batch run` |
+| **Prove** | **PROOF9™**: every glitch becomes a permanent requirement, verified across nine gates with checksummed evidence | `cf proof capture` · `cf proof run` |
+| **Ship** | Pull requests carry the proof report; merge is blocked while an in-scope requirement is open | `cf pr create` · `cf pr merge` |
+
+
 ### Think
 - **Socratic PRD discovery** that stops on its own: at most 10 questions by
   default, an early stop once coverage plateaus, a duplicate-question guard, and
@@ -231,17 +237,18 @@ uv run cf --help
   endpoint (OpenAI, Ollama, vLLM, LM Studio).
 
 ### Prove
-- **PROOF9 quality memory**: nine gates (unit, contract, e2e, visual, a11y,
+- **PROOF9 regression memory**: nine gates (unit, contract, e2e, visual, a11y,
   perf, sec, demo, manual). A captured glitch gets its obligations and draft
   test stubs generated automatically.
 - **Evidence you can trust**: artifacts are checksummed and bound to the run
   and gate that produced them. A run that verified nothing is reported as
   vacuous, never as a pass.
-- **Every gate has a real check**: `UNIT` and `CONTRACT` run pytest and `SEC`
-  runs bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` are enforced through
-  their evidence rules: each obligation gets a `test_a11y_*` / `test_perf_*` /
-  … test that runs by name, and a missing test is a failure. `MANUAL` is
-  resolved only by a justified waiver.
+- **Every gate is enforced; you write the tests for five of them.** `UNIT` and
+  `CONTRACT` run pytest and `SEC` runs bandit with no work from you. `E2E`,
+  `VISUAL`, `A11Y`, `PERF` and `DEMO` generate a named stub per obligation —
+  `test_a11y_*`, `test_perf_*` and so on — which you implement; the gate then runs
+  it by name, and a missing test is a failure, never a pass. `MANUAL` is never
+  machine-verified and is resolved only by a justified waiver.
 - **Scoped runs**: `cf proof run` checks the requirements your uncommitted
   changes touch, satisfied ones included, and `--full` checks every
   requirement except waived ones.
@@ -261,6 +268,28 @@ uv run cf --help
 - **proof9 Claude Code plugin**: the proof ledger inside a Claude Code session,
   with a pre-commit check on every commit Claude makes.
 - **TUI dashboard** (`cf dashboard`) for watching a workspace from the terminal.
+
+---
+## What we don't do yet
+
+Published deliberately. Extended rather than quietly shortened.
+
+- **CodeFRAME does not judge whether a test is meaningful.** A test that runs and
+  passes passes here too, including an over-mocked or tautological one. What it does
+  is source the requirement from a real captured defect, so the test has an actual
+  failing input to satisfy.
+- **You write the tests for five of the nine gates.** `UNIT`, `CONTRACT` and `SEC`
+  run on their own. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` generate named stubs
+  you implement. `MANUAL` is never machine-verified.
+- **The pre-commit check warns by default.** Refusing a commit is opt-in
+  (`/config`, `mode: block`). In block mode it fails closed: if the check cannot run,
+  the commit is denied rather than waved through.
+- **The loop is not automatic.** Post-merge glitch capture is not built. A person
+  runs `cf proof capture`.
+- **There is no hosted offering and no published commercial license.** Both are
+  planned.
+- **Not enterprise-ready.** SQLite only, no SSO, no RBAC, no multi-tenancy.
+- **No named design partners yet.** The cohort is being recruited.
 
 ---
 
