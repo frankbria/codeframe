@@ -74,7 +74,7 @@ and a [sample evidence report](https://codeframe.sh/sample-evidence-report.html)
 showing what a run actually produces.
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.7`).** The Golden Path CLI
+> **CodeFRAME is in public beta (`0.9.8`).** The Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) is stable enough to build on. Anything
 > marked in progress in the [roadmap](docs/PRODUCT_ROADMAP.md) is still moving,
 > and on-disk `.codeframe/` formats may change between betas.
