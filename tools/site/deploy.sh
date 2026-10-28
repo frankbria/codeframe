@@ -31,7 +31,10 @@ HEAD_SHA=$(git -C "$SRC" rev-parse HEAD)
 # that is not one. The sync below still runs, so a re-run repairs the root.
 if [ -d "$DOCROOT" ] && [ ! -e "$INCOMPLETE" ] \
    && [ "$(cat "$DOCROOT/.deployed-sha" 2>/dev/null)" != "$HEAD_SHA" ]; then
-  tar -C "$(dirname "$DOCROOT")" -czf "$BACKUP" "$(basename "$DOCROOT")"
+  # Written aside and renamed: a tar that fails part-way (disk full) must not
+  # truncate the backup it was meant to replace.
+  tar -C "$(dirname "$DOCROOT")" -czf "$BACKUP.tmp" "$(basename "$DOCROOT")"
+  mv "$BACKUP.tmp" "$BACKUP"
 fi
 
 mkdir -p "$DOCROOT"
