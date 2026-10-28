@@ -1,4 +1,4 @@
-"""PROOF9: Quality memory system with evidence-based verification.
+"""PROOF9: regression memory with evidence-based verification.
 
 Turns every failure into a permanent proof obligation. Requirements are
 tracked in a ledger, obligations are enforced on every run, and evidence
