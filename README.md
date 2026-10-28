@@ -69,8 +69,11 @@ The same CLI also covers the work before the code — requirements discovery, ta
 decomposition, and delegating each task to **Claude Code, Codex, OpenCode,
 Kilocode** or its built-in agent. See [Features](#features).
 
-**Proof of substance.** 5,000+ tests with an 80% coverage floor enforced in CI,
-and a [sample evidence report](https://codeframe.sh/sample-evidence-report.html)
+<!-- Figures rounded DOWN so they stay true as the suite grows (CI on main @ 507c6e0c, 2026-10-28: 6,035 passed, 86.13% coverage, fail_under = 80).
+     Keep in step with the stats block in site/index.html. -->
+**Proof of substance.** 6,000+ automated tests passing in CI, 85%+ test coverage
+with an 80% floor CI enforces, and a
+[sample evidence report](https://codeframe.sh/sample-evidence-report.html)
 showing what a run actually produces.
 
 > [!NOTE]
@@ -410,7 +413,7 @@ uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"   # the CI gate
 uv run ruff check .
 ```
 
-The suite has 5,000+ tests, and contributions need 80% test coverage, the floor CI enforces. Code
+The suite has 6,000+ tests, and contributions need 80% test coverage, the floor CI enforces. Code
 standards are ruff, type hints and tests with every change. During the beta,
 feature ideas go to [Discussions → Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas)
 before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is stable and how
