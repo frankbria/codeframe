@@ -41,8 +41,10 @@ if [ -d "$DOCROOT" ] && [ ! -e "$INCOMPLETE" ] \
   mv "$BACKUP.tmp" "$BACKUP"
 fi
 
-mkdir -p "$DOCROOT"
+# The marker goes down before the first change to the web root and comes up
+# after the last, so no interruption can leave a changed root without it.
 touch "$INCOMPLETE"
+mkdir -p "$DOCROOT"
 # .well-known/ is left alone in case certificate renewal ever uses this root.
 rsync -a --delete --exclude '/.well-known/' --exclude '/.deployed-sha' "$SRC/site/" "$DOCROOT/"
 chown -R www-data:www-data "$DOCROOT"
