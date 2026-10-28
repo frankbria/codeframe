@@ -239,6 +239,33 @@ TOTAL=$((RUN_END - RUN_START))
 printf '\n\n===== TOTAL WALL CLOCK: %ss (%s min) =====\n' "$TOTAL" "$((TOTAL / 60))"
 printf 'TOTAL_SECONDS=%s\n' "$TOTAL" >"$ART/total.txt"
 
+########################################
+# The proof9 plugin, installed the way a visitor to the README's first screen
+# would: from the PUBLISHED marketplace on GitHub, not from this checkout.
+#
+# Outside the timed total above on purpose. That total is the "empty directory
+# to a green cf proof run" figure the README quotes; this is a separate path.
+#
+# Same principle as installing codeframe-ai from PyPI rather than from source,
+# which is how this harness caught a published 0.9.2 that could not run at all:
+# CI tests the plugin in the repository, this tests the copy a stranger gets.
+# Steps marked documented=check are verifications the harness runs on that
+# copy, not steps a user takes.
+########################################
+step "plugin-install" yes 300 -- claude plugin install proof9 --marketplace frankbria/codeframe
+PLUGIN_DIR=$(node -e 'const d=require(process.env.HOME+"/.claude/plugins/installed_plugins.json");console.log(d.plugins["proof9@codeframe"][0].installPath)' 2>/dev/null)
+if [ -z "$PLUGIN_DIR" ] || [ ! -d "$PLUGIN_DIR" ]; then
+  note P-PLUGIN-NOT-INSTALLED critical "claude plugin install left no install path for proof9@codeframe; the README's first-screen install does not produce a usable plugin."
+else
+  printf '\n### INSTALLED PLUGIN: %s\n' "$PLUGIN_DIR"
+  step "plugin-enabled" check 60 -- bash -c "claude plugin list | grep -A4 'proof9@codeframe' | grep -q enabled" ||
+    note P-PLUGIN-DISABLED critical "proof9 installed from the marketplace but is not enabled."
+  step "plugin-validate" check 120 -- claude plugin validate "$PLUGIN_DIR" ||
+    note P-PLUGIN-INVALID critical "The published proof9 plugin fails claude plugin validate."
+  step "plugin-test" check 600 -- bash -c "cd '$PLUGIN_DIR' && claude plugin test ." ||
+    note P-PLUGIN-TESTS critical "The published proof9 plugin's own tests fail when run from the installed copy."
+fi
+
 printf '\n===== TIMINGS =====\n'
 cat "$TIMINGS"
 printf '\n===== FINDINGS =====\n'
