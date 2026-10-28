@@ -18,7 +18,9 @@ The trigger is manual. After a change to `site/` merges:
 tailscale ssh root@frank-prod-server deploy-codeframe-site
 ```
 
-One-time setup on the server:
+One-time setup on the server. It needs `git`, `rsync` and the `www-data` user, which
+nginx creates; the script refuses to start without that user rather than failing
+part-way through.
 
 ```bash
 git clone --depth 1 https://github.com/frankbria/codeframe /opt/codeframe-site

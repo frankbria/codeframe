@@ -24,6 +24,10 @@ git -C "$SRC" fetch -q --depth 1 origin main
 git -C "$SRC" reset -q --hard origin/main
 HEAD_SHA=$(git -C "$SRC" rev-parse HEAD)
 
+# Fail before touching anything if the web server user is missing, rather than
+# part-way through with a live site and no record of the deploy.
+id -u www-data >/dev/null 2>&1 || { echo "deploy: user www-data does not exist; create it or install nginx first" >&2; exit 1; }
+
 # One rolling backup of what is being replaced, taken only when the web root is
 # a complete deploy of a different commit. Skipped on a first deploy (no root),
 # on a re-run at the same commit, and after an interrupted run (torn root): in
@@ -41,8 +45,10 @@ mkdir -p "$DOCROOT"
 touch "$INCOMPLETE"
 # .well-known/ is left alone in case certificate renewal ever uses this root.
 rsync -a --delete --exclude '/.well-known/' --exclude '/.deployed-sha' "$SRC/site/" "$DOCROOT/"
-echo "$HEAD_SHA" > "$DOCROOT/.deployed-sha"
 chown -R www-data:www-data "$DOCROOT"
+# Success is recorded only after the last step that can fail, so a failure
+# leaves the previous sha and the marker in place for the next run to repair.
+echo "$HEAD_SHA" > "$DOCROOT/.deployed-sha"
 rm -f "$INCOMPLETE"
 
 echo "deployed ${HEAD_SHA:0:12} to $DOCROOT"
