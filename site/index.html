@@ -90,6 +90,12 @@
       <figcaption>A real session on codeframe 0.9.7. Asked for a change that would undo a past
         decision, Claude finds the locked requirement and keeps it.</figcaption>
     </figure>
+
+    <!-- COPY: answers the first objection an engineer has (README first screen). -->
+    <p class="tdd"><strong>TDD protects your code. This protects your tests.</strong> Your agent
+      can edit a test as easily as it can edit the code, and when a test is inconvenient that is
+      often what it edits. A requirement is a test it cannot quietly drop: releasing one takes a
+      waiver with a name, a reason and an expiry date.</p>
   </header>
 
   <section aria-labelledby="who">
@@ -102,10 +108,13 @@
   <section aria-labelledby="substance">
     <h2 id="substance">Proof of substance</h2>
     <!-- COPY: figures. Marketing-rounded DOWN so they stay true as the suite grows
-         (2026-10-14, d26a5c8: 7,891 backend tests, 87.42% coverage, fail_under = 80). -->
+         (CI on main @ 507c6e0c, 2026-10-28: 6,035 passed, 86.13% coverage, fail_under = 80).
+         Coverage is stated as the floor CI enforces, never the measured value:
+     tests/test_lifecycle_gates_948.py holds README.md to fail_under (#948).
+         Keep in step with "Proof of substance" in README.md. -->
     <div class="stats">
-      <div class="stat"><b>7,500+</b><span>automated tests passing in CI</span></div>
-      <div class="stat"><b>85%+</b><span>test coverage, with an 80% floor CI enforces</span></div>
+      <div class="stat"><b>6,000+</b><span>automated tests passing in CI</span></div>
+      <div class="stat"><b>80%</b><span>test-coverage floor, enforced in CI</span></div>
     </div>
     <p>Every check leaves evidence. See a <a href="sample-evidence-report.html">sample evidence report</a>
       from the session above, made with <code>cf proof export</code>.</p>
