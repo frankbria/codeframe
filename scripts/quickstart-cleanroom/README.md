@@ -45,15 +45,25 @@ Artifacts land in `artifacts/` (gitignored) or the directory you name:
   documented command that misbehaves is recorded as a finding and the run
   continues, so one run collects every papercut instead of one per run. Steps the
   harness had to add because the docs omitted them are marked `documented=no` in
-  `timings.tsv` — that column is itself a docs-drift signal.
+  `timings.tsv` — that column is itself a docs-drift signal. `documented=check`
+  marks something else: a verification the harness runs on the published proof9
+  plugin, not a step a user takes.
+- **The plugin is installed from the published marketplace, not this checkout.**
+  After the timed CLI walkthrough, and outside its total, the harness runs the
+  README's shell install, `claude plugin install proof9 --marketplace
+  frankbria/codeframe`, then validates the installed copy and runs that copy's
+  own test suite. CI tests the plugin in the repository; this tests what a
+  stranger receives, for the same reason the CLI is installed from PyPI rather
+  than from source.
 - **`cf prd generate --brief-file brief.md` stands in for a human.** That command
   is a Socratic interview with AI-generated questions, so a canned answer list
   desynchronises on the first rejection (measured: 21 turns, 0 accepted).
   `--brief-file` answers the question actually asked from a fixed brief. This
   used to be a `responder.py` the harness carried itself; #1114 shipped the real
   thing, so the walkthrough now exercises a code path users have.
-- The container carries only Python 3.11, `uv` and `git` — `cf` installs itself
-  into its own uv-managed venv, which is the thing under test.
+- The container carries Python 3.11, `uv`, `git` and, for the plugin path,
+  Claude Code on Node 22. Neither `cf` nor proof9 is baked in: each is installed
+  from its published source, which is the thing under test.
 
 ## Regenerating the demo document
 
