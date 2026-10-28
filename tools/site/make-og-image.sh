@@ -3,7 +3,8 @@
 # (the reduced-motion still: the demo GIF's last frame). Needs ffmpeg + DejaVu fonts.
 # Edit the COPY strings below when marketing copy changes, then re-run.
 set -euo pipefail
-cd "$(dirname "$0")"
+# Lives in tools/site/; its inputs and outputs are in site/.
+cd "$(dirname "$0")/../../site"
 
 # COPY: card strings
 LINE1="Your coding agent can't quietly"
