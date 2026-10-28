@@ -1,4 +1,4 @@
-"""Tests for PROOF9 quality memory system.
+"""Tests for the PROOF9 regression memory system.
 
 Covers models, ledger CRUD, obligation mapping, scope intersection,
 evidence attachment, capture flow, runner, waivers, and CLI commands.
