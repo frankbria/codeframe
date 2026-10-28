@@ -17,6 +17,12 @@ BACKUP=${BACKUP:-/root/codeframe.sh-predeploy.tgz}
 # mid-sync and the web root is a torn mix of two commits.
 INCOMPLETE=${INCOMPLETE:-${BACKUP%.tgz}.incomplete}
 
+# A clone killed part-way leaves a .git with no commit, and every later fetch
+# would fail. Remove only that: a checkout with a commit is kept even if fetch
+# fails, and a directory that is not a git checkout is never deleted.
+if [ -d "$SRC/.git" ] && ! git -C "$SRC" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  rm -rf "$SRC"
+fi
 if [ ! -d "$SRC/.git" ]; then
   git clone -q --depth 1 "$REPO_URL" "$SRC"
 fi
