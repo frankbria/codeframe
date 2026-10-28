@@ -32,8 +32,9 @@ What a run does:
 
 - pulls the public repository, so no credential is needed and none is stored;
 - keeps one rolling backup of the web root it replaces, at `/root/codeframe.sh-predeploy.tgz`.
-  It is skipped on a first deploy and when the root already holds the same commit, so a
-  re-run after a bad deploy cannot overwrite the last good copy;
+  It is skipped on a first deploy, when the root already holds the same commit, and after
+  an interrupted run, so a re-run after a bad or broken deploy cannot overwrite the last
+  good copy;
 - mirrors `site/` into the web root with `rsync --delete`, so an asset removed or
   renamed in the repository disappears on the next deploy;
 - writes the deployed commit to `.deployed-sha` in the web root.
