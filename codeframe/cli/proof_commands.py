@@ -1,4 +1,4 @@
-"""CLI commands for PROOF9 quality memory system.
+"""CLI commands for the PROOF9 regression memory system.
 
 Provides `cf proof` subcommands for capturing requirements,
 running their checks, managing waivers, and viewing status.
@@ -31,7 +31,7 @@ console = Console()
 
 proof_app = typer.Typer(
     name="proof",
-    help="PROOF9 quality memory system — evidence-based verification",
+    help="PROOF9 regression memory — evidence-based verification",
     no_args_is_help=True,
 )
 
