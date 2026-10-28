@@ -9,7 +9,7 @@ when marketing copy changes, then re-run.
 Needs fontTools (and cairosvg for the PNG), plus IBM Plex Sans and IBM Plex Mono
 as .woff, e.g. from `npm pack @ibm/plex-sans @ibm/plex-mono` (fonts/complete/woff/).
 
-    python3 site/make-banner.py site/codeframe-lockup-reverse.svg \
+    python3 tools/site/make-banner.py site/codeframe-lockup-reverse.svg \
         <plex-sans>/fonts/complete/woff <plex-mono>/fonts/complete/woff \
         codeframe_github_header.svg
     python3 -c "import cairosvg; cairosvg.svg2png(url='codeframe_github_header.svg', \

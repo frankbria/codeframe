@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Publish site/ at origin/main to the codeframe.sh web root.
+#
+# Runs ON the web server, not on a workstation. Installed as
+# /usr/local/bin/deploy-codeframe-site; see tools/site/README.md.
+#
+# The repository is public, so this pulls with no credential. rsync --delete
+# makes the web root an exact copy of site/: an asset removed or renamed in the
+# repository disappears here on the next run.
+set -euo pipefail
+
+REPO_URL=${REPO_URL:-https://github.com/frankbria/codeframe}
+SRC=${SRC:-/opt/codeframe-site}
+DOCROOT=${DOCROOT:-/var/www/codeframe.sh}
+BACKUP=${BACKUP:-/root/codeframe.sh-predeploy.tgz}
+# Present only while a sync is under way. If it survives, a previous run died
+# mid-sync and the web root is a torn mix of two commits.
+INCOMPLETE=${INCOMPLETE:-${BACKUP%.tgz}.incomplete}
+
+# A clone killed part-way leaves a .git with no commit, and every later fetch
+# would fail. Remove only that: a checkout with a commit is kept even if fetch
+# fails, and a directory that is not a git checkout is never deleted.
+if [ -d "$SRC/.git" ] && ! git -C "$SRC" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  rm -rf "$SRC"
+fi
+if [ ! -d "$SRC/.git" ]; then
+  git clone -q --depth 1 "$REPO_URL" "$SRC"
+fi
+git -C "$SRC" fetch -q --depth 1 origin main
+git -C "$SRC" reset -q --hard origin/main
+HEAD_SHA=$(git -C "$SRC" rev-parse HEAD)
+
+# Fail before touching anything if the web server user is missing, rather than
+# part-way through with a live site and no record of the deploy.
+id -u www-data >/dev/null 2>&1 || { echo "deploy: user www-data does not exist; create it or install nginx first" >&2; exit 1; }
+
+# One rolling backup of what is being replaced, taken only when the web root is
+# a complete deploy of a different commit. Skipped on a first deploy (no root),
+# on a re-run at the same commit, and after an interrupted run (torn root): in
+# each of those cases a backup would replace the last good copy with something
+# that is not one. The sync below still runs, so a re-run repairs the root.
+if [ -d "$DOCROOT" ] && [ ! -e "$INCOMPLETE" ] \
+   && [ "$(cat "$DOCROOT/.deployed-sha" 2>/dev/null)" != "$HEAD_SHA" ]; then
+  # Written aside and renamed: a tar that fails part-way (disk full) must not
+  # truncate the backup it was meant to replace.
+  tar -C "$(dirname "$DOCROOT")" -czf "$BACKUP.tmp" "$(basename "$DOCROOT")"
+  mv "$BACKUP.tmp" "$BACKUP"
+fi
+
+# The marker goes down before the first change to the web root and comes up
+# after the last, so no interruption can leave a changed root without it.
+touch "$INCOMPLETE"
+mkdir -p "$DOCROOT"
+# .well-known/ is left alone in case certificate renewal ever uses this root.
+rsync -a --delete --exclude '/.well-known/' --exclude '/.deployed-sha' "$SRC/site/" "$DOCROOT/"
+chown -R www-data:www-data "$DOCROOT"
+# Success is recorded only after the last step that can fail, so a failure
+# leaves the previous sha and the marker in place for the next run to repair.
+echo "$HEAD_SHA" > "$DOCROOT/.deployed-sha"
+rm -f "$INCOMPLETE"
+
+echo "deployed ${HEAD_SHA:0:12} to $DOCROOT"

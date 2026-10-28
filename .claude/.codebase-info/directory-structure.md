@@ -30,5 +30,5 @@ proof9/                   # Claude Code plugin: hooks/, tests/, README.md
 tests/                    # core/, cli/, adapters/, integration/, lifecycle/, e2e/, ci/, …
 docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, CLI guide, images/
 scripts/                  # lifecycle runner, quickstart-cleanroom/, ci/ helpers, verify scripts
-site/                     # Static codeframe.sh page (no build, no JS); make-og-image.sh rebuilds the card
+site/                     # Static codeframe.sh page (no build, no JS); tools/site/make-og-image.sh rebuilds the card, tools/site/deploy.sh publishes it
 ```
