@@ -31,10 +31,15 @@ does not update itself.
 What a run does:
 
 - pulls the public repository, so no credential is needed and none is stored;
-- keeps one rolling backup of the current web root at `/root/codeframe.sh-predeploy.tgz`;
+- keeps one rolling backup of the web root it replaces, at `/root/codeframe.sh-predeploy.tgz`.
+  It is skipped on a first deploy and when the root already holds the same commit, so a
+  re-run after a bad deploy cannot overwrite the last good copy;
 - mirrors `site/` into the web root with `rsync --delete`, so an asset removed or
   renamed in the repository disappears on the next deploy;
 - writes the deployed commit to `.deployed-sha` in the web root.
+
+Paths can be overridden with `REPO_URL`, `SRC`, `DOCROOT` and `BACKUP`, which is how
+the script is tested in a throwaway container.
 
 Check what is live:
 
