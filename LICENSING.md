@@ -61,7 +61,9 @@ what the license asks when you distribute it.
 If your team is rolling it out and wants help getting started or support, or you
 work in regulated software and need to know what evidence it can produce for
 your process, **contact us**. We agree terms with each team directly; there is no
-published price list. See [codeframe.sh/pricing](https://codeframe.sh/pricing.html).
+published price list. See [codeframe.sh/pricing](https://codeframe.sh/pricing.html),
+and read [what we don't do yet](README.md#what-we-dont-do-yet) first: it is not yet
+enterprise-ready.
 
 ## Get in touch
 

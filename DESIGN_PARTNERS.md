@@ -39,7 +39,9 @@ announcement (see [Timeline](#timeline)).
   is the deliverable — a partner we never hear from is not a partner.
 - **Skin in the game — one of two tracks:**
   - **Paid pilot (preferred).** A paid engagement for the program term, with
-    terms agreed one-to-one; there is no published price. A paid signal is the
+    terms agreed one-to-one; there is no published price. It pays for the
+    working relationship, not for the software: it is not a product or a tier,
+    and you get nothing in code that other users don't. A paid signal is the
     most honest signal there is about whether this is worth building, which is
     why we ask for it.
   - **Explicit time commitment.** If a purchase is not possible on your side,
@@ -53,8 +55,9 @@ than fifty who signed up.
 
 A good fit is a team that already ships software with AI coding agents in the
 loop and has watched an agent quietly undo something the team already decided:
-a fixed bug that came back, or a test edited until it passed. If you are evaluating whether to adopt agents at all, the beta is open
-to you, but the design-partner cohort is probably not the right entry point yet.
+a fixed bug that came back, or a test edited until it passed. If you are
+evaluating whether to adopt agents at all, the beta is open to you, but the
+design-partner cohort is probably not the right entry point yet.
 
 ## How to apply
 
