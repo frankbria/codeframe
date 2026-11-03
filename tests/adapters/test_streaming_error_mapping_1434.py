@@ -43,18 +43,18 @@ def _anthropic(status):
 
 
 def _openai(status):
-    import httpx
+    import httpx2
     import openai
 
     from codeframe.adapters.llm.openai import OpenAIProvider
 
     def handler(request):
-        return httpx.Response(status, json={"error": {"message": REASON, "type": "invalid_request_error"}})
+        return httpx2.Response(status, json={"error": {"message": REASON, "type": "invalid_request_error"}})
 
     p = OpenAIProvider(api_key="test-key", model="gpt-5")
     p._async_client = openai.AsyncOpenAI(
         api_key="test-key", max_retries=0,
-        http_client=openai.DefaultAsyncHttpxClient(transport=httpx.MockTransport(handler)),
+        http_client=openai.DefaultAsyncHttpxClient(transport=httpx2.MockTransport(handler)),
     )
     return p
 

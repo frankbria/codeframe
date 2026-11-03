@@ -140,14 +140,14 @@ class TestAnthropicThinking:
 
 
 def _openai(model: str, captured: dict, provider_name: str = "openai", base_url=None):
-    import httpx
+    import httpx2
     import openai
 
     from codeframe.adapters.llm.openai import OpenAIProvider
 
     def handler(request):
         captured["body"] = json.loads(request.content)
-        return httpx.Response(200, json={
+        return httpx2.Response(200, json={
             "id": "c", "object": "chat.completion", "created": 0, "model": model,
             "choices": [{"index": 0, "finish_reason": "stop",
                          "message": {"role": "assistant", "content": "ok"}}],
@@ -159,7 +159,7 @@ def _openai(model: str, captured: dict, provider_name: str = "openai", base_url=
     )
     provider._client = openai.OpenAI(
         api_key="test-key",
-        http_client=openai.DefaultHttpxClient(transport=httpx.MockTransport(handler)),
+        http_client=openai.DefaultHttpxClient(transport=httpx2.MockTransport(handler)),
     )
     return provider
 

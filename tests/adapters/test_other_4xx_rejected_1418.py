@@ -36,9 +36,9 @@ def _anthropic_status(status):
 
 def _openai_status(status):
     def handler(request):
-        import httpx
+        import httpx2
 
-        return httpx.Response(status, json={
+        return httpx2.Response(status, json={
             "error": {"message": REASON, "type": "invalid_request_error", "param": None, "code": None},
         })
     return handler
