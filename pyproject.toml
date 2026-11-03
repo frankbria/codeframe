@@ -39,9 +39,9 @@ dependencies = [
     # running a security check.
     "bandit>=1.8.6",
     "tenacity>=8.2.0",
-    # Capped at the tested major (#1268, the #1168 lesson): an unlocked install
-    # resolved openai 3.x against a locked 2.x with nothing checking it.
-    "openai>=1.12.0,<3",
+    # Capped at the tested major (#1268, the #1168 lesson). 3.x moved the SDK's
+    # transport to httpx2, so mock transports in tests must be httpx2 (#1384).
+    "openai>=1.12.0,<4",
     "pydantic>=2.6.0",
     "pydantic-settings>=2.1.0",
     "python-dotenv>=1.2.2",

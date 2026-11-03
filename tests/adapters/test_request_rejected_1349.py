@@ -38,7 +38,7 @@ def _anthropic(handler):
 
 
 def _openai(handler):
-    import httpx
+    import httpx2
     import openai
 
     from codeframe.adapters.llm.openai import OpenAIProvider
@@ -46,7 +46,7 @@ def _openai(handler):
     provider = OpenAIProvider(api_key="test-key", model="gpt-5")
     provider._client = openai.OpenAI(
         api_key="test-key", max_retries=0,
-        http_client=openai.DefaultHttpxClient(transport=httpx.MockTransport(handler)),
+        http_client=openai.DefaultHttpxClient(transport=httpx2.MockTransport(handler)),
     )
     return provider
 
@@ -60,9 +60,9 @@ def _anthropic_400(request):
 
 
 def _openai_400(request):
-    import httpx
+    import httpx2
 
-    return httpx.Response(400, json={
+    return httpx2.Response(400, json={
         "error": {"message": REASON, "type": "invalid_request_error", "param": "temperature", "code": None},
     })
 
