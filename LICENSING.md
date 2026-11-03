@@ -51,21 +51,26 @@ CodeFRAME infringes a patent.
 repository is contributed under Apache-2.0 (Section 5). No separate CLA is
 needed.
 
-## Hosted offering and commercial support (planned)
+## Enterprise use
 
-We plan to offer a **hosted CodeFRAME** for teams that would rather not
-self-host, and **commercial support** for teams that want it. Pricing and terms
-are still being finalized. If you have a need, **tell us now**: early
-conversations shape what we build.
+CodeFRAME is free. There is no paid edition, no hosted service and no seat
+license: everything in this repository is Apache-2.0, and using it at work,
+across a team or in a commercial product costs nothing. The table above says
+what the license asks when you distribute it.
+
+If your team is rolling it out and wants help getting started or support, or you
+work in regulated software and need to know what evidence it can produce for
+your process, **contact us**. We agree terms with each team directly; there is no
+published price list. See [codeframe.sh/pricing](https://codeframe.sh/pricing.html).
 
 ## Get in touch
 
-- **Hosted / commercial support interest:** email **licensing@codeframe.sh**, or
-  start a thread in the pinned *Early access & commercial interest*
-  [discussion](https://github.com/frankbria/codeframe/discussions) if you'd
-  rather do it in the open.
+- **Enterprise use:** email **hello@codeframe.sh**.
+- **Licensing and trademark questions:** email **licensing@codeframe.sh**, or
+  start a thread in [Discussions](https://github.com/frankbria/codeframe/discussions)
+  if you'd rather do it in the open.
 - **Design partners & early access:** email **hello@codeframe.sh** or reply to
-  the same pinned discussion to be included. See
+  the pinned discussion to be included. See
   [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md) for what the design-partner program
   offers and asks for.
 

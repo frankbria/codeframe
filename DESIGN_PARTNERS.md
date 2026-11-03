@@ -1,7 +1,8 @@
 # Design Partners
 
 CodeFRAME is in public beta. We are recruiting a small cohort of teams who will
-run real autonomous development work through it — PRD to merged PR — and tell us
+run real work through it with their coding agents — locking the requirements that
+matter to them and having proof9 check them before every commit — and tell us
 where it breaks.
 
 This is not a waitlist. It is a working relationship with a short feedback loop,
@@ -23,9 +24,10 @@ announcement (see [Timeline](#timeline)).
 - **Public credit.** Your team or company named as a launch design partner, in
   the README and in launch materials — opt-in, and you can decline or withdraw at
   any time without affecting anything else here.
-- **Continuity on what comes next.** A hosted offering and commercial support
-  are planned but not priced (see [LICENSING.md](LICENSING.md)). Partners get
-  first access to both and their pilot terms honored when pricing lands.
+- **Free stays free.** Everything you use in the program is Apache-2.0 and stays
+  that way; there is no paid edition to move you onto later. If you want support
+  for wider use after the program, that is agreed directly (see
+  [LICENSING.md](LICENSING.md#enterprise-use)).
 
 ## What you commit
 
@@ -36,11 +38,10 @@ announcement (see [Timeline](#timeline)).
   duration of the program, plus async reports when something breaks. The cadence
   is the deliverable — a partner we never hear from is not a partner.
 - **Skin in the game — one of two tracks:**
-  - **Paid pilot (preferred).** A paid engagement for the program term. Pricing
-    is not published yet and pilot terms are agreed one-to-one; partner terms are
-    honored when general pricing lands. A paid signal is the most honest
-    signal there is about whether this is worth building, which is why we ask
-    for it.
+  - **Paid pilot (preferred).** A paid engagement for the program term, with
+    terms agreed one-to-one; there is no published price. A paid signal is the
+    most honest signal there is about whether this is worth building, which is
+    why we ask for it.
   - **Explicit time commitment.** If a purchase is not possible on your side,
     a written commitment of named people and hours per month instead. Same
     cadence, same expectations.
@@ -51,8 +52,8 @@ than fifty who signed up.
 ## Who this is for
 
 A good fit is a team that already ships software with AI coding agents in the
-loop and is frustrated with what happens at the edges — before code gets written,
-and after. If you are evaluating whether to adopt agents at all, the beta is open
+loop and has watched an agent quietly undo something the team already decided:
+a fixed bug that came back, or a test edited until it passed. If you are evaluating whether to adopt agents at all, the beta is open
 to you, but the design-partner cohort is probably not the right entry point yet.
 
 ## How to apply

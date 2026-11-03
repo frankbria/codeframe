@@ -291,8 +291,8 @@ Published deliberately. Extended rather than quietly shortened.
   the commit is denied rather than waved through.
 - **The loop is not automatic.** Post-merge glitch capture is not built. A person
   runs `cf proof capture`.
-- **There is no hosted offering and no published commercial license.** Both are
-  planned.
+- **There is no hosted offering and no paid edition.** CodeFRAME is free;
+  enterprise use is by [contact](LICENSING.md#enterprise-use).
 - **Not enterprise-ready.** SQLite only, no SSO, no RBAC, no multi-tenancy.
 - **No named design partners yet.** The cohort is being recruited.
 
@@ -430,8 +430,8 @@ to propose changes.
   or `security@codeframe.sh`, never in a public issue. See [SECURITY.md](SECURITY.md).
 - **Licensing:** CodeFRAME is [Apache-2.0](LICENSE).
   [LICENSING.md](LICENSING.md) explains what that allows and the few things it
-  asks of you. A hosted offering and commercial support are planned:
-  `licensing@codeframe.sh`.
+  asks of you. There is no paid edition. For enterprise use, email
+  `hello@codeframe.sh` ([pricing](https://codeframe.sh/pricing.html)).
 - **Trademark:** the CodeFRAME name and logo are trademarks and are *not*
   covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md) before using
   the name for a fork or product.

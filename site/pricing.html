@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pricing: CodeFRAME</title>
+  <meta name="description" content="CodeFRAME is free and open source under Apache-2.0. Using it across a team or in regulated software? Contact us.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://codeframe.sh/pricing.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://codeframe.sh/pricing.html">
+  <meta property="og:title" content="Pricing: CodeFRAME">
+  <meta property="og:description" content="CodeFRAME is free and open source under Apache-2.0. Using it across a team or in regulated software? Contact us.">
+  <meta property="og:image" content="https://codeframe.sh/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CodeFRAME. Your coding agent can't quietly undo what you already decided. Install: /plugin install proof9.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://codeframe.sh/og-image.png">
+
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #1f2329; --muted: #5d636e; --line: #e3e5e8; --panel: #f5f6f7; --link: #1f2329;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0e0f11; --fg: #fafafa; --muted: #9fa3ab; --line: #26292e; --panel: #16181b; --link: #fafafa; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 16px 32px; }
+    h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
+    h2 { font-size: 1.15rem; margin: 48px 0 8px; }
+    p { margin: 0 0 12px; }
+    a { color: var(--link); text-underline-offset: 3px; }
+    a:focus-visible { outline: 3px solid var(--muted); outline-offset: 2px; border-radius: 2px; }
+    code { font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    .brand { display: block; margin-bottom: 24px; }
+    .brand img { display: block; height: auto; }
+    .lede { color: var(--muted); font-size: 1.1rem; }
+    .install { margin: 20px 0 0; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .install code { font-size: 0.95rem; overflow-wrap: anywhere; }
+    .install p { margin: 0; }
+    .install .note { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+    figure { margin: 28px 0 0; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+    figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+    .stat b { display: block; font-size: 1.8rem; line-height: 1.2; }
+    .stat span { color: var(--muted); font-size: 0.9rem; }
+    blockquote { margin: 0; padding: 12px 16px; border-left: 4px solid var(--line); background: var(--panel); border-radius: 0 8px 8px 0; }
+    footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="brand" href="./">
+      <picture>
+        <source srcset="codeframe-lockup-reverse.svg" media="(prefers-color-scheme: dark)">
+        <img src="codeframe-lockup-primary.svg" alt="CodeFRAME home" width="240" height="49">
+      </picture>
+    </a>
+    <h1>Pricing</h1>
+    <p class="lede">CodeFRAME is free and open source. Teams using it at work can talk to us.</p>
+  </header>
+
+  <!-- Decision 2026-11-03: open source, plus enterprise use by contact. No published
+       prices, no tiers, no seat count. tests/ci/test_pricing_page.py holds this page
+       to it: no currency amounts. -->
+  <section aria-labelledby="free">
+    <h2 id="free">CodeFRAME is free</h2>
+    <p>Apache-2.0, all of it: the <code>cf</code> CLI, the proof9 plugin, block mode and
+      evidence export. It runs on your machine, keeps the ledger in your repository and uses
+      your own model key. There is no account and nothing to upgrade.</p>
+    <div class="install" aria-label="Install">
+      <p><code>/plugin install proof9 --marketplace frankbria/codeframe</code></p>
+      <p class="note">At a Claude Code prompt. It needs the <code>cf</code> CLI:
+        <code>uv tool install codeframe-ai</code>.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="enterprise">
+    <h2 id="enterprise">Enterprise use: contact us</h2>
+    <p>Rolling CodeFRAME out across a team, or using it in regulated software such as medical
+      devices or avionics? Tell us what you need: help getting started, support, or evidence
+      your process has to produce. We agree terms with each team directly.</p>
+    <p>Email <a href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>.</p>
+    <p>Teams willing to run real work through it and tell us where it breaks can also join the
+      <a href="https://github.com/frankbria/codeframe/blob/main/DESIGN_PARTNERS.md">design partner program</a>.</p>
+  </section>
+
+  <section aria-labelledby="not-paying">
+    <h2 id="not-paying">What you are not paying for</h2>
+    <p>There is no hosted service, no seat count and no usage meter. It is not enterprise
+      software yet either: the ledger is SQLite in your repository, with no single sign-on or
+      role-based access. If your team needs a ledger shared across repositories, tell us. That
+      is the next thing we would build, and only if teams ask for it.</p>
+  </section>
+
+  <footer>
+    <p>Questions: <a href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>. Licensing:
+      <a href="https://github.com/frankbria/codeframe/blob/main/LICENSING.md">LICENSING.md</a>.</p>
+    <p>CodeFRAME® is a registered trademark and PROOF9™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</p>
+  </footer>
+</main>
+</body>
+</html>
