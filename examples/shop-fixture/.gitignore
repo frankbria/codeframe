@@ -1,0 +1,5 @@
+.codeframe/
+.venv/
+uv.lock
+__pycache__/
+.coverage

@@ -1,0 +1,5 @@
+# pytest config only, and no dependencies to resolve: `uv run pytest` finds
+# pytest in the environment it is started from, so the demo stays offline.
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]

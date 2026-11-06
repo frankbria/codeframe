@@ -149,7 +149,7 @@ when this report is made. A run that verified nothing is marked VACUOUS.</p>
 <tr><th>Scope</th><td>{% for k, v in r.scope.items() if v %}{{ k }}: {{ v|join(", ") }}<br>{% else %}none{% endfor %}</td></tr>
 <tr><th>Obligations</th><td>{% for o in r.obligations %}{{ o.gate }}: {{ o.status }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
 {% if r.waiver %}<tr><th>Waiver</th><td>{% if r.waiver.expired %}<span class="tag expired">WAIVER EXPIRED</span> {% endif %}{{ r.waiver.reason }}
- · approved by {{ r.waiver.approved_by or "unknown" }}{% if r.waiver.waived_at %} on {{ r.waiver.waived_at }}{% endif %}
+ · approved by {{ r.waiver.approved_by or "unknown" }} (the OS user who ran <code>cf proof waive</code>: self-asserted, not authenticated){% if r.waiver.waived_at %} on {{ r.waiver.waived_at }}{% endif %}
 {% if r.waiver.expires %} · expires {{ r.waiver.expires }}{% endif %}</td></tr>{% endif %}
 </table>
 {% if r.evidence %}
