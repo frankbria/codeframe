@@ -13,7 +13,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # The report names the repo by its folder, so the folder is always "shop".
 dest="${1:-$(mktemp -d -t shop-fixture.XXXXXX)/shop}"
 # Relative to today: a fixed date would lapse, and `cf proof run` would reopen the waiver.
-waiver_expires="$(date -u -d '+30 days' +%F)"
+# python3, not `date -d`: that flag is GNU-only and fails on macOS.
+waiver_expires="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc) + d.timedelta(days=30)).date())')"
 
 marker=".git/made-by-setup-fixture"
 if [[ -e "$dest/$marker" ]]; then
