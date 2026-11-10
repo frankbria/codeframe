@@ -241,7 +241,11 @@ def list_blocking_requirements(
         from codeframe.core.proof.pinned_tests import EvidenceScope
         from codeframe.core.proof.scope import intersects
 
-        evidence_scope = EvidenceScope(Path(workspace.repo_path), changed_scope.files)
+        # The file list is the PR's, not this checkout's diff: its revisions
+        # are not here to compare a pytest config change against.
+        evidence_scope = EvidenceScope(
+            Path(workspace.repo_path), changed_scope.files, local_diff=False
+        )
         fingerprints = (
             ledger.all_test_fingerprints(workspace)
             if any(not intersects(r.scope, changed_scope) for r in blocking)

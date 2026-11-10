@@ -695,8 +695,21 @@ class EvidenceScope:
     which still names a file after the definition in it has been deleted.
     """
 
-    def __init__(self, repo_root: Path, changed_files: Iterable[str]):
+    def __init__(
+        self,
+        repo_root: Path,
+        changed_files: Iterable[str],
+        *,
+        local_diff: bool = True,
+    ):
+        """``local_diff`` says the changed files are this checkout's own
+        working-tree changes, so ``HEAD`` and the working tree hold both sides
+        of them. The merge gate passes a PR's file list instead, whose
+        revisions are not here; a pytest config file named there then counts
+        as changed without a comparison.
+        """
         self.root = Path(repo_root)
+        self.local_diff = local_diff
         self.sources = _Sources(self.root, collection(self.root).python_classes)
         self.changed = {_norm(f) for f in changed_files if f}
         self.changed_py = sorted(f for f in self.changed if f.endswith(".py"))
@@ -712,11 +725,14 @@ class EvidenceScope:
         ``testpaths``, ``addopts``…), so changing it can drop a test without
         touching any Python file. A dependency bump in ``pyproject.toml``
         leaves the section alone and does not count; anything unreadable on
-        either side does.
+        either side does, and so does any config file in a change whose
+        revisions are not in this checkout (``local_diff=False``).
         """
         if self._config_changed is None:
             if not any(f in PYTEST_CONFIG_FILES for f in self.changed):
                 self._config_changed = False
+            elif not self.local_diff:
+                self._config_changed = True
             else:
                 try:
                     self._config_changed = _pytest_section(

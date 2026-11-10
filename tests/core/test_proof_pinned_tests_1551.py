@@ -338,6 +338,19 @@ def test_the_merge_gate_counts_an_open_requirements_tests_as_its_scope(shop):
     assert blocking == {"REQ-0001"}
 
 
+@pytest.mark.parametrize("config_file", ["pytest.ini", "pyproject.toml"])
+def test_the_merge_gate_counts_a_config_only_pr_as_touching_the_tests(shop, config_file):
+    """The PR's config edit is not in this checkout, so ``HEAD`` and the
+    working tree are the same here and a comparison would always say
+    "unchanged". A config file in the PR's list has to count on its own."""
+    ledger.reopen_requirement(shop, "REQ-0001")
+    changed = RequirementScope(files=[config_file])
+
+    blocking = {r.id for r in list_blocking_requirements(shop, changed_scope=changed)}
+
+    assert blocking == {"REQ-0001"}
+
+
 # --- Locating and fingerprinting -----------------------------------------------
 
 
@@ -705,6 +718,25 @@ def test_a_pyproject_edit_outside_the_pytest_section_stays_out_of_scope(shop):
     pyproject.write_text(pyproject.read_text().replace('"-q"', '"-q --deselect tests"'))
     results, _ = run_proof_with_diagnostics(shop)
     assert {"REQ-0001", "REQ-0002"} <= set(results)
+
+
+def test_the_fingerprint_format_is_pinned(tmp_path):
+    """Fingerprints are stored in the ledger and compared on later runs, so a
+    change to the serialization would flag every recorded test as weakened.
+    The same digest comes out on 3.11, 3.12 and 3.13; a deliberate format
+    change bumps the ``v1:`` prefix instead of editing this value."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_golden.py").write_text(
+        "import pytest\n\n\n"
+        '@pytest.mark.parametrize("n", [1, 2])\n'
+        "def test_golden(n):\n"
+        '    """Docstring is ignored."""\n'
+        "    assert n + n == 2 * n\n"
+    )
+
+    assert TestIndex(tmp_path).locate("test_golden").fingerprint == (
+        "v1:ea599388fbe5c2edc2b622a5e3a6393d5258ae650207413297f0c8c0cec070b7"
+    )
 
 
 @pytest.mark.parametrize("rebind", [
