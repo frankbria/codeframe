@@ -55,6 +55,13 @@ _SKIP_DIRS = frozenset({
     ".mypy_cache", ".pytest_cache", ".ruff_cache", ".codeframe", ".eggs",
 })
 
+#: Directories skipped even when the project sets ``norecursedirs``: version
+#: control and tool caches, which never hold the project's tests.
+_NEVER_COLLECTED = frozenset({
+    ".git", ".hg", ".svn", "__pycache__", ".pytest_cache", ".mypy_cache",
+    ".ruff_cache", ".codeframe",
+})
+
 #: ``from a import b as c`` chains followed before giving up (fails closed).
 _MAX_IMPORT_HOPS = 5
 
@@ -403,10 +410,14 @@ class TestIndex:
 
     def _walk(self, start: Path, config: Collection, found: set[str]) -> None:
         def skipped(parent: str, d: str) -> bool:
-            if d in _SKIP_DIRS or d.endswith(".egg-info"):
-                return True
             if config.norecursedirs is None:
-                return False
+                return d in _SKIP_DIRS or d.endswith(".egg-info")
+            # A configured norecursedirs replaces pytest's defaults, so our own
+            # list must not narrow it: a test under build/ that pytest collects
+            # has to be indexed. Only what pytest itself never enters stays out
+            # (VCS and cache dirs, and a virtualenv, which pytest detects).
+            if d in _NEVER_COLLECTED or (Path(parent, d) / "pyvenv.cfg").is_file():
+                return True
             full = Path(parent, d).as_posix()
             # pytest's fnmatch_ex: a bare pattern matches the basename, one with
             # a separator matches the end of the full path.

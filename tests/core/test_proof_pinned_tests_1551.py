@@ -500,3 +500,26 @@ def test_a_file_named_in_testpaths_is_collected_whatever_its_name(tmp_path):
     assert first.fingerprint and first.files == {"checks.py"}
     checks.write_text("def test_c():\n    assert True\n")
     assert TestIndex(tmp_path).locate("test_c").fingerprint != first.fingerprint
+
+
+def test_a_custom_norecursedirs_replaces_the_default_skip_list(tmp_path):
+    """pytest collects build/ when norecursedirs is set without it; so do we."""
+    (tmp_path / "pytest.ini").write_text("[pytest]\nnorecursedirs = examples\n")
+    (tmp_path / "build").mkdir()
+    test_file = tmp_path / "build" / "test_b.py"
+    test_file.write_text("def test_b():\n    assert 1 + 1 == 2\n")
+    first = TestIndex(tmp_path).locate("test_b").fingerprint
+
+    assert first
+    test_file.write_text("def test_b():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_b").fingerprint != first
+
+
+def test_a_virtualenv_is_never_indexed(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\nnorecursedirs = examples\n")
+    venv = tmp_path / "myenv"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr\n")
+    (venv / "lib" / "test_v.py").write_text("def test_v():\n    assert 1\n")
+
+    assert TestIndex(tmp_path).locate("test_v").fingerprint is None
