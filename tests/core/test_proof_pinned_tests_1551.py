@@ -705,3 +705,36 @@ def test_a_pyproject_edit_outside_the_pytest_section_stays_out_of_scope(shop):
     pyproject.write_text(pyproject.read_text().replace('"-q"', '"-q --deselect tests"'))
     results, _ = run_proof_with_diagnostics(shop)
     assert {"REQ-0001", "REQ-0002"} <= set(results)
+
+
+@pytest.mark.parametrize("rebind", [
+    "test_total = lambda: None\n",
+    "test_total: object = lambda: None\n",
+    "import os as test_total\n",
+    "for test_total in [lambda: None]:\n    pass\n",
+])
+def test_rebinding_a_test_name_makes_it_unlocatable(tmp_path, rebind):
+    """The last binding is what pytest runs; a def it replaced is not evidence."""
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_total.py"
+    test_file.write_text("def test_total():\n    assert 2 + 2 == 4\n")
+    assert TestIndex(tmp_path).locate("test_total").fingerprint
+
+    test_file.write_text(test_file.read_text() + "\n\n" + rebind)
+
+    located = TestIndex(tmp_path).locate("test_total")
+    assert located.fingerprint is None
+    assert located.files == {"tests/test_total.py"}
+
+
+def test_replacing_a_recorded_test_by_assignment_fails_a_full_run(shop):
+    repo = Path(shop.repo_path)
+    test_file = repo / "tests" / "test_shipping.py"
+    test_file.write_text(
+        test_file.read_text() + "\n\ntest_free_shipping_over_50 = lambda: None\n"
+    )
+
+    results, diagnostics = run_proof_with_diagnostics(shop, full=True)
+
+    assert _unit(results, "REQ-0001") == GateOutcome.FAILED
+    assert ledger.get_requirement(shop, "REQ-0001").status == ReqStatus.OPEN

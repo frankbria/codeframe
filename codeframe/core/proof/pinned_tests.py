@@ -211,12 +211,26 @@ def enforced_test_names(req) -> list[str]:
 
 @dataclass(frozen=True)
 class _Binding:
-    """One way a module binds a name: a ``def``, or a ``from … import``."""
+    """One way a module binds a name: a ``def``, a ``from … import``, or
+    anything else (``opaque``: an assignment, a plain ``import … as``, a class)
+    that static analysis cannot turn into a function body."""
 
     node: Optional[ast.AST] = None  # the FunctionDef, for a def
     module: Optional[str] = None  # for an import
     level: int = 0
     orig: Optional[str] = None
+    opaque: bool = False
+
+
+def _target_names(target: ast.AST) -> list[str]:
+    """Names an assignment target binds (``a``, ``a, b``, ``[a, *b]``)."""
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Starred):
+        return _target_names(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return [n for elt in target.elts for n in _target_names(elt)]
+    return []
 
 
 def _bindings(
@@ -233,11 +247,33 @@ def _bindings(
     """
     out: dict[str, list[_Binding]] = {}
 
+    def opaque(name: str) -> None:
+        out.setdefault(name, []).append(_Binding(opaque=True))
+
     def visit(body: Iterable[ast.stmt], in_class: bool) -> None:
         for stmt in body:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.setdefault(stmt.name, []).append(_Binding(node=stmt))
+            elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+                # ``test_x = lambda: None`` after ``def test_x`` replaces the
+                # test pytest runs; fingerprinting the def would bless that.
+                targets = (
+                    stmt.targets if isinstance(stmt, (ast.Assign, ast.Delete))
+                    else [stmt.target]
+                )
+                for target in targets:
+                    for name in _target_names(target):
+                        opaque(name)
+            elif isinstance(stmt, ast.Import):
+                for alias in stmt.names:
+                    opaque(alias.asname or alias.name.split(".")[0])
+            elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+                for name in _target_names(stmt.target):
+                    opaque(name)
+                visit(stmt.body, in_class)
+                visit(stmt.orelse, in_class)
             elif isinstance(stmt, ast.ClassDef):
+                opaque(stmt.name)
                 # pytest also collects a unittest.TestCase subclass whatever
                 # its name, and a base may be a TestCase two modules away, so
                 # any class with a real base counts: wider, never narrower.
@@ -254,6 +290,10 @@ def _bindings(
                         _Binding(module=stmt.module, level=stmt.level, orig=alias.name)
                     )
             elif isinstance(stmt, (ast.If, ast.With, ast.AsyncWith)):
+                for item in getattr(stmt, "items", []):
+                    if item.optional_vars is not None:
+                        for name in _target_names(item.optional_vars):
+                            opaque(name)
                 visit(stmt.body, in_class)
                 visit(getattr(stmt, "orelse", []), in_class)
             elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
@@ -567,6 +607,8 @@ def _follow(
     too.
     """
     files.add(rel)
+    if binding.opaque:
+        return False  # bound to something that is not a function body we can read
     if binding.node is not None:
         if digests is not None:
             digests.append(_def_digest(binding.node))
@@ -574,6 +616,7 @@ def _follow(
     if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
         return False
     reached = False
+    dead_end = False
     for target in _module_paths(rel, binding.module, binding.level, sources):
         found = False
         for version in versions:
@@ -583,15 +626,19 @@ def _follow(
             found = True
             files.add(target)
             for nxt in target_bindings.get(binding.orig, []):
+                # Every binding must resolve: one def beside a rebinding of the
+                # same name is not the function the import hands over.
                 if _follow(sources, target, nxt, versions, files, digests, hops + 1):
                     reached = True
+                else:
+                    dead_end = True
             break  # the first version that has the module answers for it
         if found and digests is not None:
             # A fingerprint follows the module Python would import: the first
             # candidate on the path. A scope check (no digests) keeps going,
             # since naming one file too many only costs a re-run.
             break
-    return reached
+    return reached and not dead_end
 
 
 def fingerprint(repo_root: Path, name: str, index: Optional[TestIndex] = None) -> Located:
