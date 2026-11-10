@@ -780,6 +780,10 @@ def test_replacing_a_recorded_test_by_assignment_fails_a_full_run(shop):
      "    def test_total(self, n):\n        assert n > 0\n", "[1]"),
     ("pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
      "def test_total(n):\n    assert n > 0\n", "[1]"),
+    # A module pytestmark set inside a with block.
+    ("import contextlib\n\nwith contextlib.suppress(Exception):\n"
+     "    pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
+     "def test_total(n):\n    assert n > 0\n", "[1]"),
 ])
 def test_marks_outside_the_def_are_part_of_its_fingerprint(tmp_path, before, after):
     """A class decorator or pytestmark decides which cases run, so it counts."""
@@ -791,3 +795,21 @@ def test_marks_outside_the_def_are_part_of_its_fingerprint(tmp_path, before, aft
     assert first
     test_file.write_text("import pytest\n\n\n" + before.replace("[1, 2]", after))
     assert TestIndex(tmp_path).locate("test_total").fingerprint != first
+
+
+def test_the_collecting_modules_marks_follow_an_imported_test(tmp_path):
+    """pytest applies the pin module's pytestmark to the function it imports,
+    so narrowing it there changes the cases even though the def is elsewhere."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "helpers.py").write_text("def check(n):\n    assert n > 0\n")
+    pin = tmp_path / "tests" / "test_total.py"
+    pin.write_text(
+        "import pytest\n\nfrom helpers import check as test_total\n\n"
+        "pytestmark = pytest.mark.parametrize('n', [1, 2])\n"
+    )
+    first = TestIndex(tmp_path).locate("test_total")
+
+    assert first.fingerprint
+    assert first.files == {"tests/test_total.py", "tests/helpers.py"}
+    pin.write_text(pin.read_text().replace("[1, 2]", "[1]"))
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first.fingerprint

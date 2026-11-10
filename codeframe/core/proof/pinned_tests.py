@@ -227,15 +227,18 @@ class _Binding:
 
 
 def _pytestmarks(body: Iterable[ast.stmt]) -> list[ast.stmt]:
-    """``pytestmark = …`` statements directly in ``body`` (and its if/try blocks)."""
+    """``pytestmark = …`` statements directly in ``body``, and in the
+    if/try/with/for blocks there that ``_bindings`` also walks."""
     found: list[ast.stmt] = []
     for stmt in body:
         if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
             if any("pytestmark" in _target_names(t) for t in targets):
                 found.append(stmt)
-        elif isinstance(stmt, ast.If):
+        elif isinstance(stmt, (ast.If, ast.For, ast.AsyncFor)):
             found += _pytestmarks(stmt.body) + _pytestmarks(stmt.orelse)
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            found += _pytestmarks(stmt.body)
         elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
             found += _pytestmarks(stmt.body) + _pytestmarks(stmt.orelse)
             found += _pytestmarks(stmt.finalbody)
@@ -311,9 +314,12 @@ def _bindings(
                 for alias in stmt.names:
                     if alias.name == "*":
                         continue
-                    out.setdefault(alias.asname or alias.name, []).append(
-                        _Binding(module=stmt.module, level=stmt.level, orig=alias.name)
-                    )
+                    # The importing module's marks apply to the test it
+                    # collects, wherever the def itself lives.
+                    out.setdefault(alias.asname or alias.name, []).append(_Binding(
+                        module=stmt.module, level=stmt.level, orig=alias.name,
+                        context=context,
+                    ))
             elif isinstance(stmt, (ast.If, ast.With, ast.AsyncWith)):
                 for item in getattr(stmt, "items", []):
                     if item.optional_vars is not None:
@@ -628,6 +634,7 @@ def _follow(
     files: set[str],
     digests: Optional[list[str]],
     hops: int,
+    outer: tuple = (),
 ) -> bool:
     """Record ``rel`` and everything ``binding`` leads to; False if it dead-ends.
 
@@ -635,16 +642,22 @@ def _follow(
     a fingerprint. Imports are followed into whichever of ``versions`` holds
     the target module, so a scope check sees a module as it was at ``HEAD``
     too.
+
+    ``outer`` holds the marks of the module that collects the test, carried
+    through its imports: pytest applies them to whatever function the import
+    hands over.
     """
     files.add(rel)
     if binding.opaque:
         return False  # bound to something that is not a function body we can read
     if binding.node is not None:
         if digests is not None:
-            digests.append(_def_digest(binding.node, binding.context))
+            digests.append(_def_digest(binding.node, outer + binding.context))
         return True
     if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
         return False
+    if hops == 0:
+        outer = binding.context
     reached = False
     dead_end = False
     for target in _module_paths(rel, binding.module, binding.level, sources):
@@ -658,7 +671,9 @@ def _follow(
             for nxt in target_bindings.get(binding.orig, []):
                 # Every binding must resolve: one def beside a rebinding of the
                 # same name is not the function the import hands over.
-                if _follow(sources, target, nxt, versions, files, digests, hops + 1):
+                if _follow(
+                    sources, target, nxt, versions, files, digests, hops + 1, outer
+                ):
                     reached = True
                 else:
                     dead_end = True
