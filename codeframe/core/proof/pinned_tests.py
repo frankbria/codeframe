@@ -28,12 +28,16 @@ less.
 from __future__ import annotations
 
 import ast
+import configparser
+import fnmatch
+import glob
 import hashlib
 import logging
 import os
 import posixpath
 import re
 import subprocess
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
@@ -60,15 +64,99 @@ def proof_dir(req_id: str) -> str:
     return f"tests/proof/{req_id}"
 
 
-def is_test_file(rel: str) -> bool:
-    """pytest's default ``python_files``, plus anything in ``tests/proof``."""
+_DEFAULT_PYTHON_FILES = ("test_*.py", "*_test.py")
+
+
+def is_test_file(rel: str, python_files: Iterable[str] = _DEFAULT_PYTHON_FILES) -> bool:
+    """A file pytest's ``python_files`` names, plus anything in ``tests/proof``."""
     name = posixpath.basename(rel)
     if not name.endswith(".py"):
         return False
-    return (
-        name.startswith("test_")
-        or name.endswith("_test.py")
-        or rel.startswith("tests/proof/")
+    return rel.startswith("tests/proof/") or any(
+        fnmatch.fnmatch(name, pattern) for pattern in python_files
+    )
+
+
+@dataclass(frozen=True)
+class Collection:
+    """The part of the project's pytest configuration that decides which files
+    a bare ``pytest`` (how the runner invokes it, from the repo root) collects.
+
+    ``testpaths`` is empty when unset: the whole tree. ``norecursedirs`` is
+    ``None`` when unset, meaning only :data:`_SKIP_DIRS` applies; pytest's own
+    default list is narrower than that set plus dot-directories, so leaving it
+    out walks *more*, never less.
+    """
+
+    testpaths: tuple[str, ...] = ()
+    norecursedirs: Optional[tuple[str, ...]] = None
+    python_files: tuple[str, ...] = _DEFAULT_PYTHON_FILES
+
+
+def _ini_values(raw: object) -> tuple[str, ...]:
+    if isinstance(raw, str):
+        return tuple(raw.split())
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(v) for v in raw)
+    return ()
+
+
+def _pytest_section(repo_root: Path) -> Optional[dict]:
+    """The first pytest config section in pytest's own search order, or None.
+
+    Order and "first file that has a section wins" follow pytest's rootdir
+    lookup for the repo root itself: ``pytest.ini`` / ``.pytest.ini`` (which
+    win even with no section), ``pyproject.toml``'s
+    ``[tool.pytest.ini_options]``, ``tox.ini``'s ``[pytest]``, ``setup.cfg``'s
+    ``[tool:pytest]``.
+    """
+    for name in ("pytest.ini", ".pytest.ini"):
+        path = repo_root / name
+        if path.is_file():
+            parser = configparser.ConfigParser(interpolation=None)
+            parser.read(path, encoding="utf-8")
+            return dict(parser["pytest"]) if parser.has_section("pytest") else {}
+    pyproject = repo_root / "pyproject.toml"
+    if pyproject.is_file():
+        with pyproject.open("rb") as fh:
+            tool_pytest = tomllib.load(fh).get("tool", {}).get("pytest")
+        if isinstance(tool_pytest, dict):
+            legacy = tool_pytest.get("ini_options")
+            if isinstance(legacy, dict):
+                return legacy
+            native = {k: v for k, v in tool_pytest.items() if k != "ini_options"}
+            if native:  # pytest 9's native ``[tool.pytest]`` table
+                return native
+    for name, header in (("tox.ini", "pytest"), ("setup.cfg", "tool:pytest")):
+        path = repo_root / name
+        if path.is_file():
+            parser = configparser.ConfigParser(interpolation=None)
+            parser.read(path, encoding="utf-8")
+            if parser.has_section(header):
+                return dict(parser[header])
+    return None
+
+
+def collection(repo_root: Path) -> Collection:
+    """Read :class:`Collection` from the repo root's pytest configuration.
+
+    A file that cannot be read or parsed gives the default, which is the whole
+    tree: a wider index can only make a fingerprint cover more, never let a
+    collected test go unseen.
+    """
+    try:
+        section = _pytest_section(Path(repo_root))
+    except (OSError, UnicodeDecodeError, configparser.Error, tomllib.TOMLDecodeError) as exc:
+        logger.debug("pytest config unreadable, indexing the whole tree: %s", exc)
+        return Collection()
+    if not section:
+        return Collection()
+    norecurse = section.get("norecursedirs")
+    python_files = _ini_values(section.get("python_files")) or _DEFAULT_PYTHON_FILES
+    return Collection(
+        testpaths=_ini_values(section.get("testpaths")),
+        norecursedirs=_ini_values(norecurse) if norecurse is not None else None,
+        python_files=python_files,
     )
 
 
@@ -283,20 +371,67 @@ class TestIndex:
         self._by_name: Optional[dict[str, list[str]]] = None
 
     def test_files(self) -> list[str]:
+        """The test files a bare ``pytest`` in the repo root collects.
+
+        A same-named function in a file pytest never collects (an
+        ``examples/`` tree outside ``testpaths``, say) is not the test the
+        verdict came from, so hashing it would report a change to evidence
+        that did not change. ``tests/proof/`` is always included: capture
+        writes pins there.
+        """
         if self._files is None:
-            found: list[str] = []
-            for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames[:] = sorted(
-                    d for d in dirnames
-                    if d not in _SKIP_DIRS and not d.endswith(".egg-info")
-                )
-                rel_dir = Path(dirpath).relative_to(self.root).as_posix()
-                for name in sorted(filenames):
-                    rel = name if rel_dir == "." else f"{rel_dir}/{name}"
-                    if is_test_file(rel):
-                        found.append(rel)
-            self._files = found
+            config = collection(self.root)
+            found: set[str] = set()
+            for start in self._starts(config.testpaths) + [self.root / "tests" / "proof"]:
+                self._walk(start, config, found)
+            self._files = sorted(found)
         return self._files
+
+    def _starts(self, testpaths: tuple[str, ...]) -> list[Path]:
+        if not testpaths:
+            return [self.root]
+        starts: list[Path] = []
+        for pattern in testpaths:
+            # pytest expands globs in testpaths (7.0+); a plain path globs to itself.
+            for match in sorted(glob.glob(str(self.root / pattern), recursive=True)):
+                starts.append(Path(match))
+        return starts
+
+    def _walk(self, start: Path, config: Collection, found: set[str]) -> None:
+        def skipped(parent: str, d: str) -> bool:
+            if d in _SKIP_DIRS or d.endswith(".egg-info"):
+                return True
+            if config.norecursedirs is None:
+                return False
+            full = Path(parent, d).as_posix()
+            # pytest's fnmatch_ex: a bare pattern matches the basename, one with
+            # a separator matches the end of the full path.
+            return any(
+                fnmatch.fnmatch(full, "*/" + pattern) if "/" in pattern
+                else fnmatch.fnmatch(d, pattern)
+                for pattern in config.norecursedirs
+            )
+
+        if start.is_file():
+            try:
+                rel = start.relative_to(self.root).as_posix()
+            except ValueError:
+                return
+            if rel.endswith(".py"):
+                found.add(rel)  # pytest collects a file named in testpaths outright
+            return
+        if not start.is_dir():
+            return
+        for dirpath, dirnames, filenames in os.walk(start):
+            dirnames[:] = sorted(d for d in dirnames if not skipped(dirpath, d))
+            try:
+                rel_dir = Path(dirpath).relative_to(self.root).as_posix()
+            except ValueError:
+                continue  # a testpath outside the repo is not ours to index
+            for name in filenames:
+                rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+                if is_test_file(rel, config.python_files):
+                    found.add(rel)
 
     def files_naming(self, name: str) -> list[str]:
         """Test files in which ``name`` appears as an identifier.

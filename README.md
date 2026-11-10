@@ -300,8 +300,10 @@ Published deliberately. Extended rather than quietly shortened.
 - **Only the named test's own body is fingerprinted.** Deleting, skipping or
   rewriting the test a requirement names fails it. Weakening a helper or fixture
   that test calls does not, and a `conftest.py` change re-runs the requirement but
-  passes if the test still passes. A test pytest's default file patterns would not
-  find, or one generated at collection time, cannot be fingerprinted; the pytest
+  passes if the test still passes. The fingerprint covers the files a bare
+  `pytest` collects (`testpaths`, `norecursedirs` and `python_files` are read;
+  a conftest's `collect_ignore` is not, so a same-named test there still counts).
+  A test generated at collection time cannot be fingerprinted; the pytest
   verdict still guards it. A requirement satisfied before this check existed gets
   its fingerprint at its next passing run, and that first record trusts the body
   the test has then. `cf proof rebaseline` is an audited path, not a barrier: it

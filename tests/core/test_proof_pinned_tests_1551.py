@@ -411,3 +411,80 @@ def test_a_name_that_only_appears_inside_a_longer_one_is_not_located(tmp_path):
 
     assert TestIndex(tmp_path).locate("test_total").fingerprint is None
     assert TestIndex(tmp_path).locate("test_total_wrong").fingerprint
+
+
+# --- Collection boundaries (Codex review on #1552) ----------------------------
+
+
+def _two_test_totals(root: Path) -> Path:
+    """A collected ``tests/test_total.py`` and a same-named test in ``examples/``."""
+    (root / "tests").mkdir()
+    (root / "tests" / "test_total.py").write_text("def test_total():\n    assert 2 + 2 == 4\n")
+    (root / "examples").mkdir()
+    example = root / "examples" / "test_total.py"
+    example.write_text("def test_total():\n    assert 1 == 1\n")
+    return example
+
+
+@pytest.mark.parametrize("config_file, body", [
+    ("pytest.ini", "[pytest]\ntestpaths = tests\n"),
+    ("pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'),
+    ("tox.ini", "[pytest]\ntestpaths = tests\n"),
+    ("setup.cfg", "[tool:pytest]\ntestpaths = tests\n"),
+])
+def test_a_file_outside_testpaths_does_not_move_the_fingerprint(tmp_path, config_file, body):
+    (tmp_path / config_file).write_text(body)
+    example = _two_test_totals(tmp_path)
+    first = TestIndex(tmp_path).locate("test_total")
+
+    example.write_text("def test_total():\n    assert True\n")
+    again = TestIndex(tmp_path).locate("test_total")
+
+    assert again.fingerprint == first.fingerprint
+    assert again.files == {"tests/test_total.py"}
+
+
+def test_without_testpaths_every_collected_file_still_counts(tmp_path):
+    """No config: pytest collects ``examples/`` too, so its edit is a change."""
+    example = _two_test_totals(tmp_path)
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    example.write_text("def test_total():\n    assert True\n")
+
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first
+
+
+def test_norecursedirs_and_python_files_are_honoured(tmp_path):
+    (tmp_path / "pytest.ini").write_text(
+        "[pytest]\nnorecursedirs = examples\npython_files = check_*.py\n"
+    )
+    example = _two_test_totals(tmp_path)
+    (tmp_path / "tests" / "check_total.py").write_text(
+        "def test_sum():\n    assert sum([1, 2]) == 3\n"
+    )
+
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+    example.write_text("def test_total():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_total").fingerprint == first is None  # test_*.py not collected
+    assert TestIndex(tmp_path).locate("test_sum").fingerprint
+
+
+def test_a_pin_outside_testpaths_is_still_followed(shop):
+    """Capture writes pins to ``tests/proof``; a narrow testpaths keeps them."""
+    root = Path(shop.repo_path)
+    (root / "pytest.ini").write_text("[pytest]\ntestpaths = tests/unit\n")
+
+    located = TestIndex(root).locate(PIN_NAME)
+
+    assert located.fingerprint
+    assert "tests/proof/REQ-0001/test_free_shipping_pin.py" in located.files
+
+
+def test_an_unreadable_config_indexes_the_whole_tree(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options\ntestpaths = [")
+    example = _two_test_totals(tmp_path)
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    example.write_text("def test_total():\n    assert True\n")
+
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first
