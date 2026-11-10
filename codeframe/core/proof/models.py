@@ -142,6 +142,26 @@ class Evidence:
 
 
 @dataclass
+class TestFingerprint:
+    """The body a requirement's named test had when it was accepted (#1551).
+
+    Recorded when the requirement is first satisfied, and replaced only by
+    ``cf proof rebaseline``. A run fails the requirement when the test's body
+    no longer matches, which is how a test weakened to ``assert True`` — still
+    present, still passing — is caught.
+    """
+
+    __test__ = False  # not a pytest class, whatever its name says
+
+    test_id: str
+    fingerprint: str
+    files: list[str] = field(default_factory=list)
+    recorded_at: Optional[datetime] = None
+    recorded_by: str = ""
+    reason: str = ""
+
+
+@dataclass
 class ProofRun:
     """A single proof gate run record."""
 

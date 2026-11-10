@@ -7,6 +7,26 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- **A test-only edit could quietly drop a requirement's test (#1551).** The
+  scoped `cf proof run` behind the pre-commit hook only looked at the code a
+  requirement protects, so deleting, skipping or weakening the test it names, or
+  its pin under `tests/proof/`, left the requirement out of the run and the
+  commit went through. A requirement is now also in scope when the change touches
+  its own tests (followed through imports, including the deleted version) or a
+  `conftest.py` above them, and the merge gate uses the same rule. Each named
+  test's body is fingerprinted when the requirement is satisfied; a run fails if
+  the body changed since, so `assert True` weakening fails even under `--full`.
+  An intended change is recorded with the new `cf proof rebaseline <id> --reason
+  "..."`. Helpers and fixtures the test calls are not fingerprinted, and the
+  README claim now says exactly what is caught.
+
+### Added
+
+- The refused-commit demo GIF in the README, with the scripts that record it
+  under `scripts/demo/refused-commit/`.
+
 ## [0.9.8] - 2026-10-24
 
 ### Security

@@ -41,8 +41,20 @@ requirement, keeps it, and says what it would take to change it on purpose.
 
 **TDD protects your code. This protects your tests.** Your agent can edit a test
 as easily as it can edit the code, and when a test is inconvenient that is often
-what it edits. A requirement is a test it cannot quietly drop: releasing one takes
-a waiver with a name, a reason and an expiry date.
+what it edits. A requirement names the test that proves it, and the check before
+each commit fails if that test was deleted, skipped or had its body rewritten,
+even when no other code changed. Changing it on purpose is recorded with
+`cf proof rebaseline` and a reason; releasing the requirement takes a waiver with
+a name, a reason and an expiry date. Helpers and fixtures the test calls are not
+fingerprinted yet (see [What we don't do yet](#what-we-dont-do-yet)).
+
+<p align="center">
+  <img src="docs/images/refused-commit.gif" alt="Terminal demo: a change to a flat $5 shipping rate drops free shipping over $50; the git pre-commit hook runs cf proof run, REQ-0001 fails and the commit is refused; the fix keeps free shipping over $50 and the commit is accepted" width="820">
+</p>
+
+A plain git pre-commit hook refuses a commit that brings back a fixed bug
+(cast: [`docs/images/refused-commit.cast`](docs/images/refused-commit.cast);
+[how it was recorded](scripts/demo/refused-commit/README.md)).
 
 ---
 
@@ -255,7 +267,9 @@ uv run cf --help
   it by name, and a missing test is a failure, never a pass. `MANUAL` is never
   machine-verified and is resolved only by a justified waiver.
 - **Scoped runs**: `cf proof run` checks the requirements your uncommitted
-  changes touch, satisfied ones included, and `--full` checks every
+  changes touch, satisfied ones included: through the code a requirement
+  protects, or through its own tests (deleted, skipped, rewritten, its pin under
+  `tests/proof/`, or a `conftest.py` above them). `--full` checks every
   requirement except waived ones.
 - **Waivers** require a reason, record who approved them, can expire, and stay in the
   audit trail.
@@ -283,6 +297,13 @@ Published deliberately. Extended rather than quietly shortened.
   passes passes here too, including an over-mocked or tautological one. What it does
   is source the requirement from a real captured defect, so the test has an actual
   failing input to satisfy.
+- **Only the named test's own body is fingerprinted.** Deleting, skipping or
+  rewriting the test a requirement names fails it. Weakening a helper or fixture
+  that test calls does not, and a `conftest.py` change re-runs the requirement but
+  passes if the test still passes. A test pytest's default file patterns would not
+  find, or one generated at collection time, cannot be fingerprinted; the pytest
+  verdict still guards it. A requirement satisfied before this check existed gets
+  its fingerprint at its next passing run.
 - **You write the tests for five of the nine gates.** `UNIT`, `CONTRACT` and `SEC`
   run on their own. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` generate named stubs
   you implement. `MANUAL` is never machine-verified.

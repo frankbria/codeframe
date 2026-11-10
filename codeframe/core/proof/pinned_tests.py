@@ -1,0 +1,432 @@
+"""Where a requirement's named tests live, and whether they changed (#1551).
+
+A requirement's ``scope`` is the code it protects (``--where``), not the test
+that proves it. A scoped ``cf proof run`` — the check a pre-commit hook makes —
+therefore never re-checked a requirement when a commit touched only its test,
+so deleting, skipping or weakening that test committed cleanly.
+
+This module closes both halves of that gap without running anything:
+
+* **Scope.** :class:`EvidenceScope` says whether a change touched a
+  requirement's *evidence*: its ``tests/proof/<id>/`` directory, any file that
+  defines or imports one of its named tests (read in both the working tree and
+  ``HEAD``, so a deleted test still counts), the module such an import points
+  at, and any ``conftest.py`` above one of those files. The runner and the merge
+  gate add it to :func:`~codeframe.core.proof.scope.intersects`.
+* **Weakening.** A test that still exists and still passes can have had its
+  assertion replaced by ``assert True``. :func:`fingerprint` hashes the body of
+  each named test (following an ``import … as`` pin to the function it
+  imports), the runner records it when a requirement is first satisfied, and a
+  later run fails the requirement when the body no longer matches.
+  ``cf proof rebaseline`` is the recorded way to accept an intended change.
+
+Everything here is static: ``ast`` over the files, ``git show`` for ``HEAD``.
+Anything it cannot read or resolve makes a requirement *more* in scope, never
+less.
+"""
+
+from __future__ import annotations
+
+import ast
+import hashlib
+import logging
+import os
+import posixpath
+import subprocess
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable, Optional
+
+logger = logging.getLogger(__name__)
+
+#: Bumped if the canonical form below ever changes, so an old fingerprint
+#: reads as "different scheme", not as a changed test.
+FINGERPRINT_SCHEME = "v1"
+
+#: Directories a test-file walk never descends into.
+_SKIP_DIRS = frozenset({
+    ".git", ".hg", ".svn", ".venv", "venv", "env", ".env", "node_modules",
+    "__pycache__", "site-packages", ".tox", ".nox", "build", "dist",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache", ".codeframe", ".eggs",
+})
+
+#: ``from a import b as c`` chains followed before giving up (fails closed).
+_MAX_IMPORT_HOPS = 5
+
+
+def proof_dir(req_id: str) -> str:
+    """The repo-relative directory capture writes a requirement's tests to."""
+    return f"tests/proof/{req_id}"
+
+
+def is_test_file(rel: str) -> bool:
+    """pytest's default ``python_files``, plus anything in ``tests/proof``."""
+    name = posixpath.basename(rel)
+    if not name.endswith(".py"):
+        return False
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or rel.startswith("tests/proof/")
+    )
+
+
+def enforced_test_names(req) -> list[str]:
+    """Every pytest-style ``must_pass`` rule name, across all gates."""
+    seen: list[str] = []
+    for rule in req.evidence_rules:
+        if rule.must_pass and rule.test_id.startswith("test_") and rule.test_id not in seen:
+            seen.append(rule.test_id)
+    return seen
+
+
+# --- Reading Python sources ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Binding:
+    """One way a module binds a name: a ``def``, or a ``from … import``."""
+
+    node: Optional[ast.AST] = None  # the FunctionDef, for a def
+    module: Optional[str] = None  # for an import
+    level: int = 0
+    orig: Optional[str] = None
+
+
+def _bindings(source: str) -> dict[str, list[_Binding]]:
+    """Names a module binds to a function or an imported object.
+
+    Module-level and class-level ``def`` (pytest collects test methods by the
+    same name), inside ``if``/``try``/``with`` blocks too, and module-level
+    ``from … import``. Raises ``SyntaxError`` like ``ast.parse``.
+    """
+    out: dict[str, list[_Binding]] = {}
+
+    def visit(body: Iterable[ast.stmt], in_class: bool) -> None:
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.setdefault(stmt.name, []).append(_Binding(node=stmt))
+            elif isinstance(stmt, ast.ClassDef) and not in_class:
+                visit(stmt.body, True)
+            elif isinstance(stmt, ast.ImportFrom) and not in_class:
+                for alias in stmt.names:
+                    if alias.name == "*":
+                        continue
+                    out.setdefault(alias.asname or alias.name, []).append(
+                        _Binding(module=stmt.module, level=stmt.level, orig=alias.name)
+                    )
+            elif isinstance(stmt, (ast.If, ast.With, ast.AsyncWith)):
+                visit(stmt.body, in_class)
+                visit(getattr(stmt, "orelse", []), in_class)
+            elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
+                visit(stmt.body, in_class)
+                for handler in stmt.handlers:
+                    visit(handler.body, in_class)
+                visit(stmt.orelse, in_class)
+                visit(stmt.finalbody, in_class)
+
+    visit(ast.parse(source).body, False)
+    return out
+
+
+def _canonical(node: object) -> str:
+    """A serialization of an AST that is stable across Python versions.
+
+    ``ast.dump`` is not: 3.13 stopped printing empty lists and ``None`` fields,
+    and 3.12 added ``type_params``. Omitting every empty value on both sides
+    makes those differences vanish. Positions are never included, so
+    reformatting a test and editing its comments do not change it.
+    """
+    if isinstance(node, ast.AST):
+        parts = []
+        for name in node._fields:
+            value = getattr(node, name, None)
+            if value is None or value == []:
+                continue
+            if name == "type_comment":
+                continue
+            parts.append(f"{name}={_canonical(value)}")
+        return f"{type(node).__name__}({','.join(parts)})"
+    if isinstance(node, list):
+        return "[" + ",".join(_canonical(v) for v in node) + "]"
+    return repr(node)
+
+
+def _def_digest(node: ast.AST) -> str:
+    """Digest of one test function: decorators, signature and body.
+
+    A leading docstring is dropped, so documenting a test is not a change to
+    what it proves.
+    """
+    body = list(getattr(node, "body", []))
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    shadow = type(node)(**{f: getattr(node, f, None) for f in node._fields})
+    shadow.body = body
+    return hashlib.sha256(_canonical(shadow).encode("utf-8")).hexdigest()
+
+
+class _Sources:
+    """Cached reads of repo files, from the working tree or ``HEAD``."""
+
+    def __init__(self, repo_root: Path):
+        self.root = repo_root
+        self._text: dict[tuple[str, str], Optional[str]] = {}
+        self._parsed: dict[tuple[str, str], Optional[dict[str, list[_Binding]]]] = {}
+
+    def text(self, rel: str, version: str) -> Optional[str]:
+        key = (rel, version)
+        if key not in self._text:
+            self._text[key] = self._read(rel, version)
+        return self._text[key]
+
+    def _read(self, rel: str, version: str) -> Optional[str]:
+        if version == "worktree":
+            try:
+                return (self.root / rel).read_text(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                return None
+        try:
+            result = subprocess.run(
+                ["git", "show", f"HEAD:{rel}"],
+                cwd=self.root, capture_output=True, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.decode("utf-8", errors="replace")
+
+    def exists(self, rel: str) -> bool:
+        return (self.root / rel).is_file()
+
+    def bindings(self, rel: str, version: str) -> Optional[dict[str, list[_Binding]]]:
+        """``None`` when the file is absent; ``{}`` when it does not parse."""
+        key = (rel, version)
+        if key not in self._parsed:
+            text = self.text(rel, version)
+            if text is None:
+                self._parsed[key] = None
+            else:
+                try:
+                    self._parsed[key] = _bindings(text)
+                except (SyntaxError, ValueError, RecursionError):
+                    self._parsed[key] = {}
+        return self._parsed[key]
+
+
+def _module_paths(importer: str, module: Optional[str], level: int) -> list[str]:
+    """Repo-relative files an import could name; the caller checks existence.
+
+    Absolute imports are tried from the repo root and from ``src/`` (the two
+    layouts pytest's rootdir insertion and an installed package give).
+    """
+    parts = module.split(".") if module else []
+    if level:
+        base = posixpath.dirname(importer)
+        for _ in range(level - 1):
+            base = posixpath.dirname(base)
+        roots = [base]
+    else:
+        roots = ["", "src"]
+    out = []
+    for root in roots:
+        stem = posixpath.join(root, *parts) if parts else root
+        if not stem:
+            continue
+        out.append(stem + ".py")
+        out.append(posixpath.join(stem, "__init__.py"))
+    return out
+
+
+# --- Locating a test, and fingerprinting it --------------------------------
+
+
+@dataclass
+class Located:
+    """Where a named test is defined, and its fingerprint.
+
+    ``fingerprint`` is ``None`` when the name is bound nowhere, or bound by an
+    import that cannot be followed to a function. ``files`` holds every file
+    the search passed through either way: the definitions, and each module an
+    import named.
+    """
+
+    fingerprint: Optional[str] = None
+    files: set[str] = field(default_factory=set)
+
+
+class TestIndex:
+    """The working tree's test files, scanned once and only on demand."""
+
+    __test__ = False  # not a pytest class, whatever its name says
+
+    def __init__(self, repo_root: Path, sources: Optional[_Sources] = None):
+        self.root = Path(repo_root)
+        self.sources = sources or _Sources(self.root)
+        self._files: Optional[list[str]] = None
+
+    def test_files(self) -> list[str]:
+        if self._files is None:
+            found: list[str] = []
+            for dirpath, dirnames, filenames in os.walk(self.root):
+                dirnames[:] = sorted(
+                    d for d in dirnames
+                    if d not in _SKIP_DIRS and not d.endswith(".egg-info")
+                )
+                rel_dir = Path(dirpath).relative_to(self.root).as_posix()
+                for name in sorted(filenames):
+                    rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+                    if is_test_file(rel):
+                        found.append(rel)
+            self._files = found
+        return self._files
+
+    def locate(self, name: str) -> Located:
+        located = Located()
+        digests: list[str] = []
+        resolvable = True
+        for rel in self.test_files():
+            text = self.sources.text(rel, "worktree")
+            # Cheap prefilter: a file that never spells the name cannot bind it.
+            if text is None or name not in text:
+                continue
+            for binding in (self.sources.bindings(rel, "worktree") or {}).get(name, []):
+                ok = _follow(self.sources, rel, binding, ("worktree",), located.files, digests, 0)
+                resolvable = resolvable and ok
+        if digests and resolvable:
+            joined = "\n".join(sorted(digests))
+            located.fingerprint = (
+                f"{FINGERPRINT_SCHEME}:" + hashlib.sha256(joined.encode("utf-8")).hexdigest()
+            )
+        return located
+
+
+def _follow(
+    sources: _Sources,
+    rel: str,
+    binding: _Binding,
+    versions: tuple[str, ...],
+    files: set[str],
+    digests: Optional[list[str]],
+    hops: int,
+) -> bool:
+    """Record ``rel`` and everything ``binding`` leads to; False if it dead-ends.
+
+    ``digests`` collects one digest per function reached, when the caller wants
+    a fingerprint. Imports are followed into whichever of ``versions`` holds
+    the target module, so a scope check sees a module as it was at ``HEAD``
+    too.
+    """
+    files.add(rel)
+    if binding.node is not None:
+        if digests is not None:
+            digests.append(_def_digest(binding.node))
+        return True
+    if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
+        return False
+    reached = False
+    for target in _module_paths(rel, binding.module, binding.level):
+        for version in versions:
+            target_bindings = sources.bindings(target, version)
+            if target_bindings is None:
+                continue
+            files.add(target)
+            for nxt in target_bindings.get(binding.orig, []):
+                if _follow(sources, target, nxt, versions, files, digests, hops + 1):
+                    reached = True
+            break  # the first version that has the module answers for it
+    return reached
+
+
+def fingerprint(repo_root: Path, name: str, index: Optional[TestIndex] = None) -> Located:
+    """Locate and fingerprint the test named ``name`` in the working tree."""
+    return (index or TestIndex(repo_root)).locate(name)
+
+
+# --- Scope -----------------------------------------------------------------
+
+
+def _norm(path: str) -> str:
+    return posixpath.normpath(path.strip())
+
+
+def _under(path: str, directory: str) -> bool:
+    return directory in ("", ".") or path == directory or path.startswith(directory + "/")
+
+
+class EvidenceScope:
+    """Whether a set of changed files touches a requirement's tests.
+
+    Built once per run from the changed file list. ``stored_files`` lets the
+    caller add where a requirement's tests were found when it was satisfied,
+    which still names a file after the definition in it has been deleted.
+    """
+
+    def __init__(self, repo_root: Path, changed_files: Iterable[str]):
+        self.root = Path(repo_root)
+        self.sources = _Sources(self.root)
+        self.changed = {_norm(f) for f in changed_files if f}
+        self.changed_py = sorted(f for f in self.changed if f.endswith(".py"))
+        self.changed_conftests = [
+            posixpath.dirname(f) for f in self.changed
+            if posixpath.basename(f) == "conftest.py"
+        ]
+
+    def evidence_files(self, req, stored_files: Iterable[str] = ()) -> set[str]:
+        """Files that define, import or pin ``req``'s named tests.
+
+        Read from the changed Python files (working tree and ``HEAD``) and the
+        requirement's proof directory; the files there point onward through
+        their imports. Unchanged files elsewhere are not scanned: a change can
+        only touch evidence by changing one of the files named here.
+        """
+        names = enforced_test_names(req)
+        files: set[str] = {_norm(f) for f in stored_files}
+        candidates = list(self.changed_py)
+        pdir = proof_dir(req.id)
+        pdir_path = self.root / pdir
+        if pdir_path.is_dir():
+            for path in sorted(pdir_path.rglob("*.py")):
+                rel = path.relative_to(self.root).as_posix()
+                if rel not in candidates:
+                    candidates.append(rel)
+        for rel in candidates:
+            for version in ("worktree", "HEAD"):
+                text = self.sources.text(rel, version)
+                if text is None or not any(n in text for n in names):
+                    continue
+                bound = self.sources.bindings(rel, version) or {}
+                for name in names:
+                    for binding in bound.get(name, []):
+                        _follow(
+                            self.sources, rel, binding, ("worktree", "HEAD"),
+                            files, None, 0,
+                        )
+        return files
+
+    def touches(self, req, stored_files: Iterable[str] = ()) -> bool:
+        if not self.changed:
+            return False
+        pdir = proof_dir(req.id)
+        if any(_under(f, pdir) for f in self.changed):
+            return True
+        if not self.changed_py:
+            # Only a Python file can define, import or neuter a test.
+            return False
+        evidence = self.evidence_files(req, stored_files)
+        if evidence & self.changed:
+            return True
+        # A conftest above a test can neuter it (an autouse fixture, a hook
+        # that skips) without touching the test file itself.
+        anchors = evidence | {pdir + "/"}
+        return any(
+            _under(anchor, conftest_dir)
+            for conftest_dir in self.changed_conftests
+            for anchor in anchors
+        )

@@ -22,6 +22,7 @@ from codeframe.core.proof.models import (
     RequirementScope,
     Severity,
     Source,
+    TestFingerprint,
     Waiver,
 )
 from codeframe.core.workspace import Workspace, get_db_connection
@@ -114,8 +115,32 @@ def init_proof_tables(workspace: Workspace) -> None:
         )
     """)
 
+    _create_fingerprint_table(conn)
+
     conn.commit()
     conn.close()
+
+
+def _create_fingerprint_table(conn: sqlite3.Connection) -> None:
+    """The recorded test bodies (#1551). Idempotent, and cheap to repeat.
+
+    Created by its own accessors rather than probed in ``_ensure_tables``: only
+    the proof runner and ``cf proof rebaseline`` read it, and the dashboard's
+    cold load is pinned at three connections.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS proof_test_fingerprints (
+            workspace_id TEXT NOT NULL,
+            req_id TEXT NOT NULL,
+            test_id TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            files TEXT NOT NULL DEFAULT '[]',
+            recorded_at TEXT NOT NULL,
+            recorded_by TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (workspace_id, req_id, test_id)
+        )
+    """)
 
 
 def _ensure_tables(
@@ -975,3 +1000,74 @@ def get_pr_merge_override(workspace: Workspace, pr_number: int) -> Optional[dict
         "bypassed": json.loads(row[3]),
         "overridden_at": row[4],
     }
+
+
+# --- Recorded test bodies (#1551) ---
+
+def list_test_fingerprints(workspace: Workspace, req_id: str) -> dict[str, TestFingerprint]:
+    """The recorded body of each of ``req_id``'s named tests, by test id."""
+    return all_test_fingerprints(workspace, req_id=req_id).get(req_id, {})
+
+
+def all_test_fingerprints(
+    workspace: Workspace, *, req_id: Optional[str] = None
+) -> dict[str, dict[str, TestFingerprint]]:
+    """Every recorded test body, as ``{req_id: {test_id: fingerprint}}``.
+
+    One query for the whole ledger: a scoped run consults it for every
+    requirement, and a connection per requirement adds up on a large ratchet.
+    """
+    conn = get_db_connection(workspace)
+    try:
+        _create_fingerprint_table(conn)
+        sql = (
+            "SELECT req_id, test_id, fingerprint, files, recorded_at, recorded_by, reason "
+            "FROM proof_test_fingerprints WHERE workspace_id = ?"
+        )
+        params: tuple = (workspace.id,)
+        if req_id is not None:
+            sql += " AND req_id = ?"
+            params += (req_id,)
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    out: dict[str, dict[str, TestFingerprint]] = {}
+    for row in rows:
+        out.setdefault(row[0], {})[row[1]] = TestFingerprint(
+            test_id=row[1],
+            fingerprint=row[2],
+            files=json.loads(row[3]) if row[3] else [],
+            recorded_at=datetime.fromisoformat(row[4]) if row[4] else None,
+            recorded_by=row[5] or "",
+            reason=row[6] or "",
+        )
+    return out
+
+
+def save_test_fingerprints(
+    workspace: Workspace, req_id: str, fingerprints: list[TestFingerprint]
+) -> None:
+    """Record (or replace) test bodies for ``req_id`` in one transaction."""
+    if not fingerprints:
+        return
+    conn = get_db_connection(workspace)
+    try:
+        _create_fingerprint_table(conn)
+        conn.executemany(
+            """INSERT OR REPLACE INTO proof_test_fingerprints
+               (workspace_id, req_id, test_id, fingerprint, files,
+                recorded_at, recorded_by, reason)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    workspace.id, req_id, fp.test_id, fp.fingerprint,
+                    json.dumps(sorted(fp.files)),
+                    (fp.recorded_at or _utc_now()).isoformat(),
+                    fp.recorded_by, fp.reason,
+                )
+                for fp in fingerprints
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
