@@ -36,6 +36,7 @@ import logging
 import os
 import posixpath
 import re
+import shlex
 import subprocess
 import tomllib
 from dataclasses import dataclass, field
@@ -114,6 +115,10 @@ class Collection:
     python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
     #: ``pythonpath`` entries, repo-relative ("" is the root), in order.
     pythonpath: tuple[str, ...] = ()
+    #: ``--import-mode`` from ``addopts``. Imports are resolved the way the
+    #: default ``prepend`` mode does; under any other mode a fingerprint does
+    #: not follow an import at all (see ``_follow``).
+    import_mode: str = "prepend"
 
 
 def _ini_values(raw: object) -> tuple[str, ...]:
@@ -207,7 +212,28 @@ def collection(repo_root: Path) -> Collection:
         python_files=python_files,
         python_classes=python_classes,
         pythonpath=_repo_paths(Path(repo_root), _ini_values(section.get("pythonpath"))),
+        import_mode=_import_mode(section.get("addopts")),
     )
+
+
+def _import_mode(addopts: object) -> str:
+    """The ``--import-mode`` ``addopts`` sets; the last one wins, as in argparse.
+    An ``addopts`` that does not split cleanly reads as "not prepend", which
+    stops a fingerprint following imports rather than guess."""
+    if isinstance(addopts, str):
+        try:
+            args = shlex.split(addopts)
+        except ValueError:
+            return "unknown"
+    else:
+        args = list(_ini_values(addopts))
+    mode = "prepend"
+    for i, arg in enumerate(args):
+        if arg.startswith("--import-mode="):
+            mode = arg.split("=", 1)[1]
+        elif arg == "--import-mode" and i + 1 < len(args):
+            mode = args[i + 1]
+    return mode
 
 
 def _repo_paths(repo_root: Path, entries: Iterable[str]) -> tuple[str, ...]:
@@ -293,6 +319,57 @@ def _target_names(target: ast.AST) -> list[str]:
     return []
 
 
+def _assignments(body: Iterable[ast.stmt]) -> dict[str, list[ast.stmt]]:
+    """Assignments directly in ``body`` (and its if/try/with/for blocks), by
+    the names they bind."""
+    found: dict[str, list[ast.stmt]] = {}
+    for stmt in body:
+        if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            for target in targets:
+                for name in _target_names(target):
+                    found.setdefault(name, []).append(stmt)
+        else:
+            for block in ("body", "orelse", "finalbody"):
+                if isinstance(stmt, (ast.If, ast.Try, ast.With, ast.AsyncWith,
+                                     ast.For, ast.AsyncFor)) or (
+                    type(stmt).__name__ == "TryStar"
+                ):
+                    for name, stmts in _assignments(getattr(stmt, block, [])).items():
+                        found.setdefault(name, []).extend(stmts)
+            for handler in getattr(stmt, "handlers", []):
+                for name, stmts in _assignments(handler.body).items():
+                    found.setdefault(name, []).extend(stmts)
+    return found
+
+
+def _values(nodes: Iterable[object], scopes: list[dict[str, list[ast.stmt]]]) -> tuple:
+    """The assignments behind every name ``nodes`` reference, transitively.
+
+    ``@pytest.mark.parametrize("n", CASES)`` decides the cases through
+    ``CASES``, which the decorator only names; ``CASES = BASE + [3]`` pulls
+    ``BASE`` in too. ``scopes`` runs innermost first (a class body, then the
+    module). A name bound by an import is not followed: the README says so.
+    """
+    seen: set[str] = set()
+    out: list[ast.stmt] = []
+    queue = [n for n in nodes if isinstance(n, ast.AST)]
+    while queue:
+        node = queue.pop()
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name) and sub.id not in seen:
+                seen.add(sub.id)
+                for scope in scopes:
+                    if sub.id in scope:
+                        for stmt in scope[sub.id]:
+                            if stmt not in out:
+                                out.append(stmt)
+                                queue.append(stmt.value if getattr(stmt, "value", None)
+                                             else stmt)
+                        break
+    return ("values", out) if out else ()
+
+
 def _bindings(
     source: str, python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
 ) -> dict[str, list[_Binding]]:
@@ -310,10 +387,18 @@ def _bindings(
     def opaque(name: str) -> None:
         out.setdefault(name, []).append(_Binding(opaque=True))
 
-    def visit(body: Iterable[ast.stmt], in_class: bool, context: tuple = ()) -> None:
+    def visit(
+        body: Iterable[ast.stmt], in_class: bool, context: tuple = (),
+        scopes: Optional[list] = None,
+    ) -> None:
+        scopes = scopes if scopes is not None else [module_assigns]
         for stmt in body:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                out.setdefault(stmt.name, []).append(_Binding(node=stmt, context=context))
+                refs = [*stmt.decorator_list, *stmt.args.defaults,
+                        *[d for d in stmt.args.kw_defaults if d is not None], *context]
+                out.setdefault(stmt.name, []).append(_Binding(
+                    node=stmt, context=context + _values(refs, scopes),
+                ))
             elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
                 # ``test_x = lambda: None`` after ``def test_x`` replaces the
                 # test pytest runs; fingerprinting the def would bless that.
@@ -330,8 +415,11 @@ def _bindings(
             elif isinstance(stmt, (ast.For, ast.AsyncFor)):
                 for name in _target_names(stmt.target):
                     opaque(name)
-                visit(stmt.body, in_class, context + ("for", stmt.iter, stmt.body))
-                visit(stmt.orelse, in_class, context + ("for-else", stmt.iter, stmt.body))
+                visit(stmt.body, in_class, context + ("for", stmt.iter, stmt.body), scopes)
+                visit(
+                    stmt.orelse, in_class,
+                    context + ("for-else", stmt.iter, stmt.body), scopes,
+                )
             elif isinstance(stmt, ast.ClassDef):
                 opaque(stmt.name)
                 # pytest also collects a unittest.TestCase subclass whatever
@@ -344,6 +432,7 @@ def _bindings(
                     visit(
                         stmt.body, True,
                         context + tuple(stmt.decorator_list) + tuple(_pytestmarks(stmt.body)),
+                        [_assignments(stmt.body), *scopes],
                     )
             elif isinstance(stmt, ast.ImportFrom) and not in_class:
                 for alias in stmt.names:
@@ -353,7 +442,7 @@ def _bindings(
                     # collects, wherever the def itself lives.
                     out.setdefault(alias.asname or alias.name, []).append(_Binding(
                         module=stmt.module, level=stmt.level, orig=alias.name,
-                        context=context,
+                        context=context + _values(context, scopes),
                     ))
             # A def inside a block runs only on its path, so the path is part
             # of what it proves: flipping ``if True`` to ``if False`` can swap
@@ -362,8 +451,8 @@ def _bindings(
             # imports (a ``raise`` caught by the ``try``, suppressed by the
             # ``with``, a ``continue`` in the loop), the whole block counts.
             elif isinstance(stmt, ast.If):
-                visit(stmt.body, in_class, context + ("if", stmt.test))
-                visit(stmt.orelse, in_class, context + ("else", stmt.test))
+                visit(stmt.body, in_class, context + ("if", stmt.test), scopes)
+                visit(stmt.orelse, in_class, context + ("else", stmt.test), scopes)
             elif isinstance(stmt, (ast.With, ast.AsyncWith)):
                 for item in stmt.items:
                     if item.optional_vars is not None:
@@ -373,16 +462,18 @@ def _bindings(
                     stmt.body, in_class,
                     context + ("with",) + tuple(item.context_expr for item in stmt.items)
                     + (stmt.body,),
+                    scopes,
                 )
             elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
                 path = context + ("try", stmt.body, stmt.handlers)
-                visit(stmt.body, in_class, path)
+                visit(stmt.body, in_class, path, scopes)
                 for handler in stmt.handlers:
-                    visit(handler.body, in_class, path + ("except", handler.type))
-                visit(stmt.orelse, in_class, path + ("try-else",))
-                visit(stmt.finalbody, in_class, path + ("finally",))
+                    visit(handler.body, in_class, path + ("except", handler.type), scopes)
+                visit(stmt.orelse, in_class, path + ("try-else",), scopes)
+                visit(stmt.finalbody, in_class, path + ("finally",), scopes)
 
     module = ast.parse(source).body
+    module_assigns = _assignments(module)
     visit(module, False, tuple(_pytestmarks(module)))
     return out
 
@@ -441,10 +532,12 @@ class _Sources:
         repo_root: Path,
         python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES,
         pythonpath: tuple[str, ...] = (),
+        import_mode: str = "prepend",
     ):
         self.root = repo_root
         self.python_classes = python_classes
         self.pythonpath = pythonpath
+        self.import_mode = import_mode
         self._text: dict[tuple[str, str], Optional[str]] = {}
         self._parsed: dict[tuple[str, str], Optional[dict[str, list[_Binding]]]] = {}
 
@@ -577,7 +670,8 @@ class TestIndex:
         self.root = Path(repo_root)
         self.config = collection(self.root)
         self.sources = sources or _Sources(
-            self.root, self.config.python_classes, self.config.pythonpath
+            self.root, self.config.python_classes, self.config.pythonpath,
+            self.config.import_mode,
         )
         self._files: Optional[list[str]] = None
         self._by_name: Optional[dict[str, list[str]]] = None
@@ -715,6 +809,12 @@ def _follow(
         return False
     if hops == 0:
         outer = binding.context
+    if digests is not None and sources.import_mode != "prepend":
+        # The candidates below are prepend mode's search order. Under
+        # ``importlib`` or ``append`` another module can win, so name every
+        # candidate as evidence and leave the test unfingerprinted.
+        _follow(sources, rel, binding, versions, files, None, hops, outer)
+        return False
     reached = False
     dead_end = False
     for target in _module_paths(rel, binding.module, binding.level, sources):
@@ -783,7 +883,9 @@ class EvidenceScope:
         self.root = Path(repo_root)
         self.local_diff = local_diff
         config = collection(self.root)
-        self.sources = _Sources(self.root, config.python_classes, config.pythonpath)
+        self.sources = _Sources(
+            self.root, config.python_classes, config.pythonpath, config.import_mode
+        )
         self.changed = {_norm(f) for f in changed_files if f}
         self.changed_py = sorted(f for f in self.changed if f.endswith(".py"))
         self.changed_conftests = [

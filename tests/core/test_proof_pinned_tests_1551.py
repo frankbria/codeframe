@@ -623,6 +623,35 @@ def test_a_configured_pythonpath_decides_which_module_an_import_reaches(
     assert TestIndex(tmp_path).locate("test_total").fingerprint != first.fingerprint
 
 
+@pytest.mark.parametrize("addopts", [
+    "--import-mode=importlib", "-q --import-mode append",
+])
+def test_a_non_default_import_mode_leaves_an_imported_test_unfingerprinted(
+    tmp_path, addopts
+):
+    """The resolver follows prepend mode's search order; under another mode a
+    different module can win, so it names them all and records no body."""
+    from types import SimpleNamespace
+
+    (tmp_path / "pytest.ini").write_text(
+        f"[pytest]\naddopts = {addopts}\npythonpath = .\ntestpaths = tests\n"
+    )
+    (tmp_path / "checks.py").write_text("def check():\n    assert 2 * 3 == 6\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "checks.py").write_text("def check():\n    assert 1\n")
+    (tmp_path / "tests" / "test_pin.py").write_text("from checks import check as test_total\n")
+
+    located = TestIndex(tmp_path).locate("test_total")
+
+    assert located.fingerprint is None
+    assert {"checks.py", "tests/checks.py"} <= located.files
+    req = SimpleNamespace(
+        id="REQ-0001",
+        evidence_rules=[SimpleNamespace(test_id="test_total", must_pass=True)],
+    )
+    assert EvidenceScope(tmp_path, ["checks.py"]).touches(req, located.files)
+
+
 def test_an_import_from_beside_a_parent_conftest_is_followed(tmp_path):
     (tmp_path / "tests" / "unit").mkdir(parents=True)
     (tmp_path / "tests" / "conftest.py").write_text("")
@@ -817,6 +846,15 @@ def test_replacing_a_recorded_test_by_assignment_fails_a_full_run(shop):
      "    def test_total(self, n):\n        assert n > 0\n", "[1]"),
     ("pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
      "def test_total(n):\n    assert n > 0\n", "[1]"),
+    # Cases supplied through a module constant, directly and through another.
+    ("CASES = [1, 2]\n\n\n@pytest.mark.parametrize('n', CASES)\n"
+     "def test_total(n):\n    assert n > 0\n", "[1]"),
+    ("BASE = [1, 2]\nCASES = BASE + []\n\n\n@pytest.mark.parametrize('n', CASES)\n"
+     "def test_total(n):\n    assert n > 0\n", "[1]"),
+    # A class constant feeding a method's parametrize.
+    ("class TestTotal:\n    CASES = [1, 2]\n\n"
+     "    @pytest.mark.parametrize('n', CASES)\n"
+     "    def test_total(self, n):\n        assert n > 0\n", "[1]"),
     # A module pytestmark set inside a with block.
     ("import contextlib\n\nwith contextlib.suppress(Exception):\n"
      "    pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
