@@ -285,6 +285,10 @@ class _Binding:
     #: class-level parametrize, say), and the if/for/with/try path to the def.
     #: AST nodes and plain strings only, so ``_canonical`` serializes it.
     context: tuple = ()
+    #: ``context`` without the module's own marks, for a def reached through
+    #: an import: pytest applies the *collecting* module's marks to it, not
+    #: those of the module it was imported from.
+    import_context: tuple = ()
 
 
 def _pytestmarks(body: Iterable[ast.stmt]) -> list[ast.stmt]:
@@ -294,7 +298,9 @@ def _pytestmarks(body: Iterable[ast.stmt]) -> list[ast.stmt]:
     for stmt in body:
         if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-            if any("pytestmark" in _target_names(t) for t in targets):
+            # ``__test__ = False`` stops pytest collecting the module or
+            # class, so it decides which cases run just as a mark does.
+            if any(n in ("pytestmark", "__test__") for t in targets for n in _target_names(t)):
                 found.append(stmt)
         elif isinstance(stmt, (ast.If, ast.For, ast.AsyncFor)):
             found += _pytestmarks(stmt.body) + _pytestmarks(stmt.orelse)
@@ -394,10 +400,14 @@ def _bindings(
         scopes = scopes if scopes is not None else [module_assigns]
         for stmt in body:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                refs = [*stmt.decorator_list, *stmt.args.defaults,
-                        *[d for d in stmt.args.kw_defaults if d is not None], *context]
+                own = [*stmt.decorator_list, *stmt.args.defaults,
+                       *[d for d in stmt.args.kw_defaults if d is not None]]
+                # The module's marks are always the prefix of ``context``.
+                local = context[len(module_marks):]
                 out.setdefault(stmt.name, []).append(_Binding(
-                    node=stmt, context=context + _values(refs, scopes),
+                    node=stmt,
+                    context=context + _values([*own, *context], scopes),
+                    import_context=local + _values([*own, *local], scopes),
                 ))
             elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
                 # ``test_x = lambda: None`` after ``def test_x`` replaces the
@@ -474,7 +484,8 @@ def _bindings(
 
     module = ast.parse(source).body
     module_assigns = _assignments(module)
-    visit(module, False, tuple(_pytestmarks(module)))
+    module_marks = tuple(_pytestmarks(module))
+    visit(module, False, module_marks)
     return out
 
 
@@ -803,7 +814,8 @@ def _follow(
         return False  # bound to something that is not a function body we can read
     if binding.node is not None:
         if digests is not None:
-            digests.append(_def_digest(binding.node, outer + binding.context))
+            own = binding.import_context if hops else binding.context
+            digests.append(_def_digest(binding.node, outer + own))
         return True
     if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
         return False
@@ -893,6 +905,7 @@ class EvidenceScope:
             if posixpath.basename(f) == "conftest.py"
         ]
         self._config_changed: Optional[bool] = None
+        self._index: Optional[TestIndex] = None
 
     def pytest_config_changed(self) -> bool:
         """Whether the effective pytest section differs between ``HEAD`` and the
@@ -925,9 +938,19 @@ class EvidenceScope:
         requirement's proof directory; the files there point onward through
         their imports. Unchanged files elsewhere are not scanned: a change can
         only touch evidence by changing one of the files named here.
+
+        With no ``stored_files`` (a requirement never satisfied since this
+        check existed, so nothing recorded where its tests live), the tests
+        are located in the working tree instead: an unchanged test file that
+        imports the changed module is otherwise invisible.
         """
         names = enforced_test_names(req)
         files: set[str] = {_norm(f) for f in stored_files}
+        if not files and names:
+            if self._index is None:
+                self._index = TestIndex(self.root, self.sources)
+            for name in names:
+                files |= self._index.locate(name).files
         candidates = list(self.changed_py)
         pdir = proof_dir(req.id)
         pdir_path = self.root / pdir

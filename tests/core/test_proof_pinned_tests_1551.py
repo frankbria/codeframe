@@ -652,6 +652,57 @@ def test_a_non_default_import_mode_leaves_an_imported_test_unfingerprinted(
     assert EvidenceScope(tmp_path, ["checks.py"]).touches(req, located.files)
 
 
+def _helper_pin(root: Path) -> Path:
+    (root / "tests").mkdir()
+    helpers = root / "tests" / "helpers.py"
+    helpers.write_text("def check():\n    assert 2 * 3 == 6\n")
+    (root / "tests" / "test_pin.py").write_text("from helpers import check as test_total\n")
+    return helpers
+
+
+def test_the_imported_modules_own_marks_do_not_move_the_fingerprint(tmp_path):
+    """pytest applies the collecting module's marks, not the helper's: an edit
+    there runs the same case and must not read as drift."""
+    helpers = _helper_pin(tmp_path)
+    helpers.write_text(
+        "import pytest\n\npytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
+        + helpers.read_text()
+    )
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    assert first
+    helpers.write_text(helpers.read_text().replace("[1, 2]", "[1]"))
+    assert TestIndex(tmp_path).locate("test_total").fingerprint == first
+
+
+def test_turning_off_collection_of_a_module_moves_the_fingerprint(tmp_path):
+    """``__test__ = False`` drops that module's cases of a shared name."""
+    (tmp_path / "tests").mkdir()
+    for name in ("test_a.py", "test_b.py"):
+        (tmp_path / "tests" / name).write_text("def test_total():\n    assert 2 + 2 == 4\n")
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    assert first
+    test_b = tmp_path / "tests" / "test_b.py"
+    test_b.write_text("__test__ = False\n\n\n" + test_b.read_text())
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first
+
+
+def test_an_unchanged_pin_still_brings_its_imported_module_into_scope(tmp_path):
+    """No baseline recorded yet: the scope check finds the pin itself rather
+    than waiting for the pin file to change."""
+    from types import SimpleNamespace
+
+    _helper_pin(tmp_path)
+    req = SimpleNamespace(
+        id="REQ-0001",
+        evidence_rules=[SimpleNamespace(test_id="test_total", must_pass=True)],
+    )
+
+    assert EvidenceScope(tmp_path, ["tests/helpers.py"]).touches(req)
+    assert not EvidenceScope(tmp_path, ["src/other.py"]).touches(req)
+
+
 def test_an_import_from_beside_a_parent_conftest_is_followed(tmp_path):
     (tmp_path / "tests" / "unit").mkdir(parents=True)
     (tmp_path / "tests" / "conftest.py").write_text("")
