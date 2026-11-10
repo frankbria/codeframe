@@ -40,7 +40,7 @@ import subprocess
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -122,25 +122,36 @@ def _ini_values(raw: object) -> tuple[str, ...]:
     return ()
 
 
-def _pytest_section(repo_root: Path) -> Optional[dict]:
+#: Files whose pytest section can change what a bare ``pytest`` collects.
+PYTEST_CONFIG_FILES = ("pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg")
+
+
+def _read_worktree(repo_root: Path) -> Callable[[str], Optional[str]]:
+    def read(name: str) -> Optional[str]:
+        path = Path(repo_root) / name
+        return path.read_text(encoding="utf-8") if path.is_file() else None
+    return read
+
+
+def _pytest_section(read: Callable[[str], Optional[str]]) -> Optional[dict]:
     """The first pytest config section in pytest's own search order, or None.
 
     Order and "first file that has a section wins" follow pytest's rootdir
     lookup for the repo root itself: ``pytest.ini`` / ``.pytest.ini`` (which
     win even with no section), ``pyproject.toml``'s
     ``[tool.pytest.ini_options]``, ``tox.ini``'s ``[pytest]``, ``setup.cfg``'s
-    ``[tool:pytest]``.
+    ``[tool:pytest]``. ``read`` returns a root file's text, or None if absent,
+    so the same lookup serves the working tree and ``HEAD``.
     """
     for name in ("pytest.ini", ".pytest.ini"):
-        path = repo_root / name
-        if path.is_file():
+        text = read(name)
+        if text is not None:
             parser = configparser.ConfigParser(interpolation=None)
-            parser.read(path, encoding="utf-8")
+            parser.read_string(text)
             return dict(parser["pytest"]) if parser.has_section("pytest") else {}
-    pyproject = repo_root / "pyproject.toml"
-    if pyproject.is_file():
-        with pyproject.open("rb") as fh:
-            tool_pytest = tomllib.load(fh).get("tool", {}).get("pytest")
+    text = read("pyproject.toml")
+    if text is not None:
+        tool_pytest = tomllib.loads(text).get("tool", {}).get("pytest")
         if isinstance(tool_pytest, dict):
             legacy = tool_pytest.get("ini_options")
             if isinstance(legacy, dict):
@@ -149,13 +160,16 @@ def _pytest_section(repo_root: Path) -> Optional[dict]:
             if native:  # pytest 9's native ``[tool.pytest]`` table
                 return native
     for name, header in (("tox.ini", "pytest"), ("setup.cfg", "tool:pytest")):
-        path = repo_root / name
-        if path.is_file():
+        text = read(name)
+        if text is not None:
             parser = configparser.ConfigParser(interpolation=None)
-            parser.read(path, encoding="utf-8")
+            parser.read_string(text)
             if parser.has_section(header):
                 return dict(parser[header])
     return None
+
+
+_CONFIG_ERRORS = (OSError, UnicodeDecodeError, configparser.Error, tomllib.TOMLDecodeError)
 
 
 def collection(repo_root: Path) -> Collection:
@@ -166,8 +180,8 @@ def collection(repo_root: Path) -> Collection:
     collected test go unseen.
     """
     try:
-        section = _pytest_section(Path(repo_root))
-    except (OSError, UnicodeDecodeError, configparser.Error, tomllib.TOMLDecodeError) as exc:
+        section = _pytest_section(_read_worktree(Path(repo_root)))
+    except _CONFIG_ERRORS as exc:
         logger.debug("pytest config unreadable, indexing the whole tree: %s", exc)
         return Collection()
     if not section:
@@ -613,6 +627,28 @@ class EvidenceScope:
             posixpath.dirname(f) for f in self.changed
             if posixpath.basename(f) == "conftest.py"
         ]
+        self._config_changed: Optional[bool] = None
+
+    def pytest_config_changed(self) -> bool:
+        """Whether the effective pytest section differs between ``HEAD`` and the
+        working tree. It decides what pytest collects (``python_functions``,
+        ``testpaths``, ``addopts``…), so changing it can drop a test without
+        touching any Python file. A dependency bump in ``pyproject.toml``
+        leaves the section alone and does not count; anything unreadable on
+        either side does.
+        """
+        if self._config_changed is None:
+            if not any(f in PYTEST_CONFIG_FILES for f in self.changed):
+                self._config_changed = False
+            else:
+                try:
+                    self._config_changed = _pytest_section(
+                        lambda name: self.sources.text(name, "worktree")
+                    ) != _pytest_section(lambda name: self.sources.text(name, "HEAD"))
+                except _CONFIG_ERRORS as exc:
+                    logger.debug("pytest config unreadable, treating it as changed: %s", exc)
+                    self._config_changed = True
+        return self._config_changed
 
     def evidence_files(self, req, stored_files: Iterable[str] = ()) -> set[str]:
         """Files that define, import or pin ``req``'s named tests.
@@ -652,8 +688,11 @@ class EvidenceScope:
         pdir = proof_dir(req.id)
         if any(_under(f, pdir) for f in self.changed):
             return True
+        if enforced_test_names(req) and self.pytest_config_changed():
+            return True
         if not self.changed_py:
-            # Only a Python file can define, import or neuter a test.
+            # Past the pytest config, only a Python file can define, import
+            # or neuter a test.
             return False
         evidence = self.evidence_files(req, stored_files)
         if evidence & self.changed:

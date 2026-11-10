@@ -673,3 +673,35 @@ def test_a_pin_follows_the_module_python_imports_not_every_candidate(tmp_path):
     assert "test_original.py" not in first.files
     unused.write_text("def test_original():\n    assert True\n")
     assert TestIndex(tmp_path).locate("test_unit_req_0001").fingerprint == first.fingerprint
+
+
+def test_a_pytest_config_change_that_drops_the_tests_fails_them(shop):
+    """A config-only edit can stop pytest collecting a test; the run must look."""
+    (Path(shop.repo_path) / "pytest.ini").write_text("[pytest]\npython_functions = never_collect\n")
+
+    results, diagnostics = run_proof_with_diagnostics(shop)
+
+    assert _unit(results, "REQ-0001") == GateOutcome.FAILED
+    assert _unit(results, "REQ-0002") == GateOutcome.FAILED
+    assert ledger.get_requirement(shop, "REQ-0001").status == ReqStatus.OPEN
+
+
+def test_a_pyproject_edit_outside_the_pytest_section_stays_out_of_scope(shop):
+    repo = Path(shop.repo_path)
+    pyproject = repo / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "shop"\ndependencies = ["a==1"]\n\n'
+        '[tool.pytest.ini_options]\naddopts = "-q"\n'
+    )
+    _git(repo, "add", "pyproject.toml")
+    _git(repo, "commit", "-qm", "pyproject")
+    pyproject.write_text(pyproject.read_text().replace("a==1", "a==2"))
+
+    results, diagnostics = run_proof_with_diagnostics(shop)
+
+    assert not results
+    assert {"REQ-0001", "REQ-0002"} <= set(diagnostics.scope_skipped)
+
+    pyproject.write_text(pyproject.read_text().replace('"-q"', '"-q --deselect tests"'))
+    results, _ = run_proof_with_diagnostics(shop)
+    assert {"REQ-0001", "REQ-0002"} <= set(results)
