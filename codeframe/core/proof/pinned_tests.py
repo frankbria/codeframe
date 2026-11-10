@@ -253,9 +253,11 @@ class _Binding:
     level: int = 0
     orig: Optional[str] = None
     opaque: bool = False
-    #: Marks that decide which cases the def runs although they sit outside
-    #: it: enclosing classes' decorators and ``pytestmark`` assignments in the
-    #: module and those classes (a class-level parametrize, say).
+    #: What decides which cases the def runs, or whether it is the def that
+    #: runs at all, although it sits outside it: enclosing classes' decorators,
+    #: ``pytestmark`` assignments in the module and those classes (a
+    #: class-level parametrize, say), and the if/for/with/try path to the def.
+    #: AST nodes and plain strings only, so ``_canonical`` serializes it.
     context: tuple = ()
 
 
@@ -328,8 +330,8 @@ def _bindings(
             elif isinstance(stmt, (ast.For, ast.AsyncFor)):
                 for name in _target_names(stmt.target):
                     opaque(name)
-                visit(stmt.body, in_class, context)
-                visit(stmt.orelse, in_class, context)
+                visit(stmt.body, in_class, context + ("for", stmt.iter, stmt.body))
+                visit(stmt.orelse, in_class, context + ("for-else", stmt.iter, stmt.body))
             elif isinstance(stmt, ast.ClassDef):
                 opaque(stmt.name)
                 # pytest also collects a unittest.TestCase subclass whatever
@@ -353,19 +355,32 @@ def _bindings(
                         module=stmt.module, level=stmt.level, orig=alias.name,
                         context=context,
                     ))
-            elif isinstance(stmt, (ast.If, ast.With, ast.AsyncWith)):
-                for item in getattr(stmt, "items", []):
+            # A def inside a block runs only on its path, so the path is part
+            # of what it proves: flipping ``if True`` to ``if False`` can swap
+            # in a weaker same-named def without touching either body. Where a
+            # sibling statement can cut the path short and the module still
+            # imports (a ``raise`` caught by the ``try``, suppressed by the
+            # ``with``, a ``continue`` in the loop), the whole block counts.
+            elif isinstance(stmt, ast.If):
+                visit(stmt.body, in_class, context + ("if", stmt.test))
+                visit(stmt.orelse, in_class, context + ("else", stmt.test))
+            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+                for item in stmt.items:
                     if item.optional_vars is not None:
                         for name in _target_names(item.optional_vars):
                             opaque(name)
-                visit(stmt.body, in_class, context)
-                visit(getattr(stmt, "orelse", []), in_class, context)
+                visit(
+                    stmt.body, in_class,
+                    context + ("with",) + tuple(item.context_expr for item in stmt.items)
+                    + (stmt.body,),
+                )
             elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
-                visit(stmt.body, in_class, context)
+                path = context + ("try", stmt.body, stmt.handlers)
+                visit(stmt.body, in_class, path)
                 for handler in stmt.handlers:
-                    visit(handler.body, in_class, context)
-                visit(stmt.orelse, in_class, context)
-                visit(stmt.finalbody, in_class, context)
+                    visit(handler.body, in_class, path + ("except", handler.type))
+                visit(stmt.orelse, in_class, path + ("try-else",))
+                visit(stmt.finalbody, in_class, path + ("finally",))
 
     module = ast.parse(source).body
     visit(module, False, tuple(_pytestmarks(module)))

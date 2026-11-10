@@ -834,6 +834,31 @@ def test_marks_outside_the_def_are_part_of_its_fingerprint(tmp_path, before, aft
     assert TestIndex(tmp_path).locate("test_total").fingerprint != first
 
 
+@pytest.mark.parametrize("before, after", [
+    ("if True:\n", "if False:\n"),
+    ("for _ in [1]:\n", "for _ in []:\n"),
+    ("try:\n", "try:\n    raise ValueError\n"),
+])
+def test_the_path_to_a_conditional_def_is_part_of_its_fingerprint(tmp_path, before, after):
+    """Flipping the branch swaps a weaker same-named def in; neither body moves."""
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_total.py"
+    rest = {
+        "if": "    def test_total():\n        assert 2 + 2 == 4\n"
+              "else:\n    def test_total():\n        pass\n",
+        "for": "    def test_total():\n        assert 2 + 2 == 4\n"
+               "else:\n    def test_total():\n        pass\n",
+        "try": "    def test_total():\n        assert 2 + 2 == 4\n"
+               "except ValueError:\n    def test_total():\n        pass\n",
+    }[before.split()[0].rstrip(":")]
+    test_file.write_text(before + rest)
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    assert first
+    test_file.write_text(after + rest)
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first
+
+
 def test_the_collecting_modules_marks_follow_an_imported_test(tmp_path):
     """pytest applies the pin module's pytestmark to the function it imports,
     so narrowing it there changes the cases even though the def is elsewhere."""
