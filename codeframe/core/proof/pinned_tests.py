@@ -220,6 +220,28 @@ class _Binding:
     level: int = 0
     orig: Optional[str] = None
     opaque: bool = False
+    #: Marks that decide which cases the def runs although they sit outside
+    #: it: enclosing classes' decorators and ``pytestmark`` assignments in the
+    #: module and those classes (a class-level parametrize, say).
+    context: tuple = ()
+
+
+def _pytestmarks(body: Iterable[ast.stmt]) -> list[ast.stmt]:
+    """``pytestmark = …`` statements directly in ``body`` (and its if/try blocks)."""
+    found: list[ast.stmt] = []
+    for stmt in body:
+        if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+            if any("pytestmark" in _target_names(t) for t in targets):
+                found.append(stmt)
+        elif isinstance(stmt, ast.If):
+            found += _pytestmarks(stmt.body) + _pytestmarks(stmt.orelse)
+        elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
+            found += _pytestmarks(stmt.body) + _pytestmarks(stmt.orelse)
+            found += _pytestmarks(stmt.finalbody)
+            for handler in stmt.handlers:
+                found += _pytestmarks(handler.body)
+    return found
 
 
 def _target_names(target: ast.AST) -> list[str]:
@@ -250,10 +272,10 @@ def _bindings(
     def opaque(name: str) -> None:
         out.setdefault(name, []).append(_Binding(opaque=True))
 
-    def visit(body: Iterable[ast.stmt], in_class: bool) -> None:
+    def visit(body: Iterable[ast.stmt], in_class: bool, context: tuple = ()) -> None:
         for stmt in body:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                out.setdefault(stmt.name, []).append(_Binding(node=stmt))
+                out.setdefault(stmt.name, []).append(_Binding(node=stmt, context=context))
             elif isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
                 # ``test_x = lambda: None`` after ``def test_x`` replaces the
                 # test pytest runs; fingerprinting the def would bless that.
@@ -270,8 +292,8 @@ def _bindings(
             elif isinstance(stmt, (ast.For, ast.AsyncFor)):
                 for name in _target_names(stmt.target):
                     opaque(name)
-                visit(stmt.body, in_class)
-                visit(stmt.orelse, in_class)
+                visit(stmt.body, in_class, context)
+                visit(stmt.orelse, in_class, context)
             elif isinstance(stmt, ast.ClassDef):
                 opaque(stmt.name)
                 # pytest also collects a unittest.TestCase subclass whatever
@@ -281,7 +303,10 @@ def _bindings(
                     not (isinstance(b, ast.Name) and b.id == "object") for b in stmt.bases
                 )
                 if has_base or _matches_prefix_or_glob(stmt.name, python_classes):
-                    visit(stmt.body, True)
+                    visit(
+                        stmt.body, True,
+                        context + tuple(stmt.decorator_list) + tuple(_pytestmarks(stmt.body)),
+                    )
             elif isinstance(stmt, ast.ImportFrom) and not in_class:
                 for alias in stmt.names:
                     if alias.name == "*":
@@ -294,16 +319,17 @@ def _bindings(
                     if item.optional_vars is not None:
                         for name in _target_names(item.optional_vars):
                             opaque(name)
-                visit(stmt.body, in_class)
-                visit(getattr(stmt, "orelse", []), in_class)
+                visit(stmt.body, in_class, context)
+                visit(getattr(stmt, "orelse", []), in_class, context)
             elif isinstance(stmt, ast.Try) or type(stmt).__name__ == "TryStar":
-                visit(stmt.body, in_class)
+                visit(stmt.body, in_class, context)
                 for handler in stmt.handlers:
-                    visit(handler.body, in_class)
-                visit(stmt.orelse, in_class)
-                visit(stmt.finalbody, in_class)
+                    visit(handler.body, in_class, context)
+                visit(stmt.orelse, in_class, context)
+                visit(stmt.finalbody, in_class, context)
 
-    visit(ast.parse(source).body, False)
+    module = ast.parse(source).body
+    visit(module, False, tuple(_pytestmarks(module)))
     return out
 
 
@@ -330,8 +356,9 @@ def _canonical(node: object) -> str:
     return repr(node)
 
 
-def _def_digest(node: ast.AST) -> str:
-    """Digest of one test function: decorators, signature and body.
+def _def_digest(node: ast.AST, context: tuple = ()) -> str:
+    """Digest of one test function: decorators, signature and body, plus the
+    marks around it (``_Binding.context``) when there are any.
 
     A leading docstring is dropped, so documenting a test is not a change to
     what it proves.
@@ -346,7 +373,10 @@ def _def_digest(node: ast.AST) -> str:
         body = body[1:]
     shadow = type(node)(**{f: getattr(node, f, None) for f in node._fields})
     shadow.body = body
-    return hashlib.sha256(_canonical(shadow).encode("utf-8")).hexdigest()
+    text = _canonical(shadow)
+    if context:
+        text += "|context=" + _canonical(list(context))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class _Sources:
@@ -611,7 +641,7 @@ def _follow(
         return False  # bound to something that is not a function body we can read
     if binding.node is not None:
         if digests is not None:
-            digests.append(_def_digest(binding.node))
+            digests.append(_def_digest(binding.node, binding.context))
         return True
     if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
         return False

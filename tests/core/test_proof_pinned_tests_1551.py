@@ -738,3 +738,24 @@ def test_replacing_a_recorded_test_by_assignment_fails_a_full_run(shop):
 
     assert _unit(results, "REQ-0001") == GateOutcome.FAILED
     assert ledger.get_requirement(shop, "REQ-0001").status == ReqStatus.OPEN
+
+
+@pytest.mark.parametrize("before, after", [
+    # A class-level parametrize, a class-body pytestmark, a module pytestmark.
+    ("@pytest.mark.parametrize('n', [1, 2])\nclass TestTotal:\n"
+     "    def test_total(self, n):\n        assert n > 0\n", "[1]"),
+    ("class TestTotal:\n    pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n"
+     "    def test_total(self, n):\n        assert n > 0\n", "[1]"),
+    ("pytestmark = pytest.mark.parametrize('n', [1, 2])\n\n\n"
+     "def test_total(n):\n    assert n > 0\n", "[1]"),
+])
+def test_marks_outside_the_def_are_part_of_its_fingerprint(tmp_path, before, after):
+    """A class decorator or pytestmark decides which cases run, so it counts."""
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_total.py"
+    test_file.write_text("import pytest\n\n\n" + before)
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    assert first
+    test_file.write_text("import pytest\n\n\n" + before.replace("[1, 2]", after))
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first
