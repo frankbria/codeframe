@@ -607,3 +607,31 @@ def test_weakening_the_imported_original_is_in_scope(tmp_path):
     assert EvidenceScope(tmp_path, ["tests/test_original.py"]).touches(req, stored)
     assert EvidenceScope(tmp_path, ["tests/test_pin.py"]).touches(req)
     assert not EvidenceScope(tmp_path, ["src/app.py"]).touches(req, stored)
+
+
+def test_a_test_that_cannot_be_located_is_reported_not_silently_unguarded(shop):
+    """Satisfied, but with no recorded body: the run says so instead of an info log."""
+    repo = Path(shop.repo_path)
+    (repo / "tests" / "test_gen.py").write_text(
+        'exec("def test_gen():\\n    assert 1 + 1 == 2\\n")\n'
+    )
+    _require(shop, "REQ-0003", "cart.py", "test_gen")
+
+    results, diagnostics = run_proof_with_diagnostics(shop, full=True)
+
+    assert _unit(results, "REQ-0003") == GateOutcome.PASSED
+    assert diagnostics.unfingerprinted == {"REQ-0003": ["test_gen"]}
+    assert ledger.get_requirement(shop, "REQ-0003").status == ReqStatus.SATISFIED
+
+
+def test_the_run_command_names_a_test_it_cannot_guard(shop):
+    repo = Path(shop.repo_path)
+    (repo / "tests" / "test_gen.py").write_text(
+        'exec("def test_gen():\\n    assert 1 + 1 == 2\\n")\n'
+    )
+    _require(shop, "REQ-0003", "cart.py", "test_gen")
+
+    result = CliRunner().invoke(app, ["proof", "run", "--full", "-w", str(shop.repo_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "REQ-0003" in result.output and "could not be located statically" in result.output

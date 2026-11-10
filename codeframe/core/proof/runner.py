@@ -92,6 +92,10 @@ class ProofRunDiagnostics:
     #: requirement. They failed although pytest passed them, so a caller
     #: showing only PASS/FAIL owes the user the reason.
     changed_tests: dict[str, list[str]] = field(default_factory=dict)
+    #: Named tests of a newly satisfied requirement that could not be located
+    #: statically, so have no recorded body: pytest still judges them, but a
+    #: later weakening goes unseen. Shown so a partial guard is not silent.
+    unfingerprinted: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def reason(self) -> EmptyReason:
@@ -469,14 +473,15 @@ def _test_drift(
 
 def _record_test_bodies(
     workspace: Workspace, req, recorded: dict[str, TestFingerprint], index: TestIndex
-) -> None:
+) -> list[str]:
     """Record the body of each named test not yet recorded, once ``req`` passes.
 
     Never replaces an existing record: a run that re-baselined on its own
     would accept the very weakening it exists to catch. ``cf proof rebaseline``
-    is the one path that replaces one.
+    is the one path that replaces one. Returns the names it could not locate.
     """
     new = []
+    missing: list[str] = []
     for name in _obligation_test_ids(req):
         if name in recorded:
             continue
@@ -486,6 +491,7 @@ def _record_test_bodies(
             # file pytest's default patterns do not name). The pytest verdict
             # still guards it; only weakening goes unseen.
             logger.info("REQ %s: test %s could not be fingerprinted", req.id, name)
+            missing.append(name)
             continue
         new.append(TestFingerprint(
             test_id=name,
@@ -496,6 +502,7 @@ def _record_test_bodies(
     ledger.save_test_fingerprints(workspace, req.id, new)
     for fp in new:
         recorded[fp.test_id] = fp
+    return missing
 
 
 def _report_scope_skipped(run_id: str, skipped: list[str]) -> None:
@@ -779,9 +786,11 @@ def run_proof_with_diagnostics(
                     # mark_satisfied stamps satisfied_at, which the ledger column
                     # and the API field never carried before (#923).
                     ledger.mark_satisfied(workspace, req)
-                    _record_test_bodies(
+                    missing = _record_test_bodies(
                         workspace, req, fingerprints.setdefault(req.id, {}), index
                     )
+                    if missing:
+                        diagnostics.unfingerprinted[req.id] = missing
                 elif req.status == ReqStatus.SATISFIED and any(
                     o == GateOutcome.FAILED for _, o in req_results
                 ):

@@ -605,6 +605,14 @@ def run(
             f"intended: [bold]cf proof rebaseline {escape(req_id)} --reason \"...\"[/bold]"
         )
 
+    for req_id, names in diagnostics.unfingerprinted.items():
+        console.print(
+            f"\n[yellow]{escape(req_id)}:[/yellow] {', '.join(escape(n) for n in names)} "
+            "could not be located statically, so a later weakening of "
+            f"{'it' if len(names) == 1 else 'them'} will not be caught (pytest still judges "
+            f"{'it' if len(names) == 1 else 'them'})."
+        )
+
     if any_failed:
         console.print("\n[red]Some requirements failed.[/red] Fix issues and re-run.")
         raise typer.Exit(1)
