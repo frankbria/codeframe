@@ -72,6 +72,15 @@ def proof_dir(req_id: str) -> str:
 
 
 _DEFAULT_PYTHON_FILES = ("test_*.py", "*_test.py")
+_DEFAULT_PYTHON_CLASSES = ("Test",)
+
+
+def _matches_prefix_or_glob(name: str, patterns: Iterable[str]) -> bool:
+    """pytest's rule for ``python_classes``: a prefix, or a glob if it has one."""
+    return any(
+        name.startswith(p) or (any(c in p for c in "*?[") and fnmatch.fnmatch(name, p))
+        for p in patterns
+    )
 
 
 def is_test_file(rel: str, python_files: Iterable[str] = _DEFAULT_PYTHON_FILES) -> bool:
@@ -102,6 +111,7 @@ class Collection:
     testpaths: tuple[str, ...] = ()
     norecursedirs: Optional[tuple[str, ...]] = None
     python_files: tuple[str, ...] = _DEFAULT_PYTHON_FILES
+    python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
 
 
 def _ini_values(raw: object) -> tuple[str, ...]:
@@ -164,10 +174,12 @@ def collection(repo_root: Path) -> Collection:
         return Collection()
     norecurse = section.get("norecursedirs")
     python_files = _ini_values(section.get("python_files")) or _DEFAULT_PYTHON_FILES
+    python_classes = _ini_values(section.get("python_classes")) or _DEFAULT_PYTHON_CLASSES
     return Collection(
         testpaths=_ini_values(section.get("testpaths")),
         norecursedirs=_ini_values(norecurse) if norecurse is not None else None,
         python_files=python_files,
+        python_classes=python_classes,
     )
 
 
@@ -193,12 +205,17 @@ class _Binding:
     orig: Optional[str] = None
 
 
-def _bindings(source: str) -> dict[str, list[_Binding]]:
+def _bindings(
+    source: str, python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
+) -> dict[str, list[_Binding]]:
     """Names a module binds to a function or an imported object.
 
-    Module-level and class-level ``def`` (pytest collects test methods by the
-    same name), inside ``if``/``try``/``with`` blocks too, and module-level
-    ``from … import``. Raises ``SyntaxError`` like ``ast.parse``.
+    Module-level ``def``, and ``def`` in a class pytest collects (its name
+    matches ``python_classes``; nested ones too) since pytest collects test
+    methods by the same name; inside ``if``/``try``/``with`` blocks too; and
+    module-level ``from … import``. A same-named method on a helper class is
+    not the test pytest runs, so it is left out. Raises ``SyntaxError`` like
+    ``ast.parse``.
     """
     out: dict[str, list[_Binding]] = {}
 
@@ -206,8 +223,9 @@ def _bindings(source: str) -> dict[str, list[_Binding]]:
         for stmt in body:
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.setdefault(stmt.name, []).append(_Binding(node=stmt))
-            elif isinstance(stmt, ast.ClassDef) and not in_class:
-                visit(stmt.body, True)
+            elif isinstance(stmt, ast.ClassDef):
+                if _matches_prefix_or_glob(stmt.name, python_classes):
+                    visit(stmt.body, True)
             elif isinstance(stmt, ast.ImportFrom) and not in_class:
                 for alias in stmt.names:
                     if alias.name == "*":
@@ -274,8 +292,11 @@ def _def_digest(node: ast.AST) -> str:
 class _Sources:
     """Cached reads of repo files, from the working tree or ``HEAD``."""
 
-    def __init__(self, repo_root: Path):
+    def __init__(
+        self, repo_root: Path, python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
+    ):
         self.root = repo_root
+        self.python_classes = python_classes
         self._text: dict[tuple[str, str], Optional[str]] = {}
         self._parsed: dict[tuple[str, str], Optional[dict[str, list[_Binding]]]] = {}
 
@@ -320,17 +341,33 @@ class _Sources:
                 self._parsed[key] = None
             else:
                 try:
-                    self._parsed[key] = _bindings(text)
+                    self._parsed[key] = _bindings(text, self.python_classes)
                 except (SyntaxError, ValueError, RecursionError):
                     self._parsed[key] = {}
         return self._parsed[key]
 
 
-def _module_paths(importer: str, module: Optional[str], level: int) -> list[str]:
+def _basedir(directory: str, sources: Optional["_Sources"]) -> str:
+    """The directory pytest's default ``prepend`` import mode puts on
+    ``sys.path`` for a module in ``directory``: the first one up that is not a
+    package (has no ``__init__.py``)."""
+    while directory and sources is not None and sources.exists(
+        posixpath.join(directory, "__init__.py")
+    ):
+        directory = posixpath.dirname(directory)
+    return directory
+
+
+def _module_paths(
+    importer: str, module: Optional[str], level: int, sources: Optional["_Sources"] = None
+) -> list[str]:
     """Repo-relative files an import could name; the caller checks existence.
 
-    Absolute imports are tried from the repo root and from ``src/`` (the two
-    layouts pytest's rootdir insertion and an installed package give).
+    Absolute imports are tried where pytest's ``prepend`` mode makes them
+    importable: the importing test module's basedir, the basedir of each
+    ``conftest.py`` above it, then the repo root and ``src/`` (rootdir
+    insertion and an installed package). So a non-package ``tests/`` that
+    does ``from test_original import …`` resolves to ``tests/test_original.py``.
     """
     parts = module.split(".") if module else []
     if level:
@@ -339,11 +376,20 @@ def _module_paths(importer: str, module: Optional[str], level: int) -> list[str]
             base = posixpath.dirname(base)
         roots = [base]
     else:
-        roots = ["", "src"]
+        roots = [_basedir(posixpath.dirname(importer), sources)]
+        directory = posixpath.dirname(importer)
+        while directory:
+            if sources is not None and sources.exists(posixpath.join(directory, "conftest.py")):
+                roots.append(_basedir(directory, sources))
+            directory = posixpath.dirname(directory)
+        roots += ["", "src"]
+        roots = list(dict.fromkeys(roots))
     out = []
     for root in roots:
         stem = posixpath.join(root, *parts) if parts else root
         if not stem:
+            continue
+        if stem + ".py" in out:
             continue
         out.append(stem + ".py")
         out.append(posixpath.join(stem, "__init__.py"))
@@ -377,7 +423,8 @@ class TestIndex:
 
     def __init__(self, repo_root: Path, sources: Optional[_Sources] = None):
         self.root = Path(repo_root)
-        self.sources = sources or _Sources(self.root)
+        self.config = collection(self.root)
+        self.sources = sources or _Sources(self.root, self.config.python_classes)
         self._files: Optional[list[str]] = None
         self._by_name: Optional[dict[str, list[str]]] = None
 
@@ -391,7 +438,7 @@ class TestIndex:
         writes pins there.
         """
         if self._files is None:
-            config = collection(self.root)
+            config = self.config
             found: set[str] = set()
             for start in self._starts(config.testpaths) + [self.root / "tests" / "proof"]:
                 self._walk(start, config, found)
@@ -506,7 +553,7 @@ def _follow(
     if hops >= _MAX_IMPORT_HOPS or binding.orig is None:
         return False
     reached = False
-    for target in _module_paths(rel, binding.module, binding.level):
+    for target in _module_paths(rel, binding.module, binding.level, sources):
         for version in versions:
             target_bindings = sources.bindings(target, version)
             if target_bindings is None:
@@ -545,7 +592,7 @@ class EvidenceScope:
 
     def __init__(self, repo_root: Path, changed_files: Iterable[str]):
         self.root = Path(repo_root)
-        self.sources = _Sources(self.root)
+        self.sources = _Sources(self.root, collection(self.root).python_classes)
         self.changed = {_norm(f) for f in changed_files if f}
         self.changed_py = sorted(f for f in self.changed if f.endswith(".py"))
         self.changed_conftests = [

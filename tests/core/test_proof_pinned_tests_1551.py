@@ -523,3 +523,87 @@ def test_a_virtualenv_is_never_indexed(tmp_path):
     (venv / "lib" / "test_v.py").write_text("def test_v():\n    assert 1\n")
 
     assert TestIndex(tmp_path).locate("test_v").fingerprint is None
+
+
+def test_a_same_named_method_on_a_helper_class_is_not_the_test(tmp_path):
+    """pytest collects ``Test*`` classes only; Helper.test_total never runs."""
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_total.py"
+    source = (
+        "def test_total():\n    assert 2 + 2 == 4\n\n\n"
+        "class Helper:\n    def test_total(self):\n        return 1\n\n\n"
+        "class TestOuter:\n    class TestInner:\n        def test_nested(self):\n"
+        "            assert 3 > 2\n"
+    )
+    test_file.write_text(source)
+    first = TestIndex(tmp_path).locate("test_total").fingerprint
+
+    test_file.write_text(source.replace("return 1", "return 2"))
+    assert TestIndex(tmp_path).locate("test_total").fingerprint == first
+    # A nested Test class inside a collected one is collected, so it counts.
+    assert TestIndex(tmp_path).locate("test_nested").fingerprint
+
+
+def test_python_classes_config_decides_which_class_methods_count(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\npython_classes = Check\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_c.py").write_text(
+        "class CheckSum:\n    def test_sum(self):\n        assert sum([1]) == 1\n\n\n"
+        "class TestNot:\n    def test_not(self):\n        assert 1\n"
+    )
+
+    assert TestIndex(tmp_path).locate("test_sum").fingerprint
+    assert TestIndex(tmp_path).locate("test_not").fingerprint is None
+
+
+def _non_package_pin(root: Path) -> Path:
+    """``tests/`` with no ``__init__.py``: pytest's prepend mode puts it on sys.path."""
+    (root / "tests").mkdir()
+    original = root / "tests" / "test_original.py"
+    original.write_text("def test_original():\n    assert 2 * 3 == 6\n")
+    (root / "tests" / "test_pin.py").write_text(
+        "from test_original import test_original as test_unit_req_0001\n"
+    )
+    return original
+
+
+def test_an_import_from_a_sibling_in_a_non_package_tests_dir_is_followed(tmp_path):
+    original = _non_package_pin(tmp_path)
+    first = TestIndex(tmp_path).locate("test_unit_req_0001")
+
+    assert first.fingerprint
+    assert "tests/test_original.py" in first.files
+    original.write_text("def test_original():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_unit_req_0001").fingerprint != first.fingerprint
+
+
+def test_an_import_from_beside_a_parent_conftest_is_followed(tmp_path):
+    (tmp_path / "tests" / "unit").mkdir(parents=True)
+    (tmp_path / "tests" / "conftest.py").write_text("")
+    (tmp_path / "tests" / "shared_checks.py").write_text("def test_shared():\n    assert 1 < 2\n")
+    (tmp_path / "tests" / "unit" / "test_u.py").write_text(
+        "from shared_checks import test_shared as test_u_pin\n"
+    )
+
+    located = TestIndex(tmp_path).locate("test_u_pin")
+
+    assert located.fingerprint
+    assert "tests/shared_checks.py" in located.files
+
+
+def test_weakening_the_imported_original_is_in_scope(tmp_path):
+    """The other half of the finding: the scope check sees that file too."""
+    from types import SimpleNamespace
+
+    from codeframe.core.proof.pinned_tests import EvidenceScope
+
+    _non_package_pin(tmp_path)
+    req = SimpleNamespace(
+        id="REQ-0001",
+        evidence_rules=[SimpleNamespace(test_id="test_unit_req_0001", must_pass=True)],
+    )
+    stored = TestIndex(tmp_path).locate("test_unit_req_0001").files
+
+    assert EvidenceScope(tmp_path, ["tests/test_original.py"]).touches(req, stored)
+    assert EvidenceScope(tmp_path, ["tests/test_pin.py"]).touches(req)
+    assert not EvidenceScope(tmp_path, ["src/app.py"]).touches(req, stored)

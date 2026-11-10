@@ -303,8 +303,10 @@ Published deliberately. Extended rather than quietly shortened.
   passes if the test still passes. The fingerprint covers the files a bare
   `pytest` collects (`testpaths`, `norecursedirs` and `python_files` are read;
   a conftest's `collect_ignore` is not, so a same-named test there still counts).
-  A test generated at collection time cannot be fingerprinted; the pytest
-  verdict still guards it. A requirement satisfied before this check existed gets
+  A test generated at collection time, or bound through an import CodeFRAME
+  cannot follow (a `sys.path` change in a conftest, say), cannot be
+  fingerprinted; the pytest verdict still guards it, but a weakened body there
+  goes unseen. A requirement satisfied before this check existed gets
   its fingerprint at its next passing run, and that first record trusts the body
   the test has then. `cf proof rebaseline` is an audited path, not a barrier: it
   records who accepted a changed test and why, like a waiver, and anyone who can
