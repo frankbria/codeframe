@@ -207,6 +207,7 @@ cf proof list                         # List all requirements
 cf proof status                       # Summary across all gates
 cf proof show <id>                    # Requirement detail and evidence
 cf proof waive <id> --reason "..."    # Waive with a justification
+cf proof rebaseline <id> --reason "..."  # Accept an intended edit to a requirement's test
 cf proof export --format pdf          # Evidence report: html (default), json or pdf
 
 cf review                             # Run verification gates on the working tree
@@ -234,6 +235,16 @@ gate treats them as open. Once satisfied, a plain `cf proof run` re-checks each
 one whenever your uncommitted changes touch its scope, and `--full` re-checks
 them all. A regression that is already committed is caught by `--full`, or by
 the next change that touches it.
+
+**A requirement's own tests are guarded too (#1551).** When a requirement is
+satisfied, the body of each test it names is fingerprinted. A plain `cf proof run`
+then includes the requirement when your uncommitted changes touch its tests (the
+test file, a pin under `tests/proof/<id>/`, or a `conftest.py` above them), not
+only the code it protects, and the run fails if a named test was deleted, skipped
+or had its body rewritten. Docstring and formatting changes do not count. When the
+change is intended, record it with `cf proof rebaseline <id> --reason "..."`; the
+reason and your user name are stored. Helpers and fixtures the test calls are not
+fingerprinted.
 
 **Machine-readable output.** `run`, `list`, `status`, `show`, `capture` and
 `ratchet` take `--json`: stdout then holds one JSON document, and progress,

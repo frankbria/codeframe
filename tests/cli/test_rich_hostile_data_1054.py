@@ -149,6 +149,7 @@ EXEMPT: dict[str, str] = {
     "proof ratchet": "runs the project's test suite",
     "proof export": "writes the report to a file; its HTML escaping is pinned by test_proof_export_1472",
     "proof waive": "mutates the seeded requirement `proof show` renders",
+    "proof rebaseline": "records test bodies for the seeded requirement; its str args are escaped (#1206 guard)",
     "hooks run": "executes repo-configured shell hooks",
     "hooks set": "edits .codeframe/config.yaml",
     "hooks clear": "edits .codeframe/config.yaml",

@@ -25,7 +25,9 @@ from codeframe.core.proof.models import (
     ProofRun,
     ReqStatus,
     RequirementScope,
+    TestFingerprint,
 )
+from codeframe.core.proof.pinned_tests import EvidenceScope, TestIndex
 from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
 
@@ -86,6 +88,14 @@ class ProofRunDiagnostics:
     config_filtered: list[str] = field(default_factory=list)
     filter_combination: list[str] = field(default_factory=list)
     no_obligations: list[str] = field(default_factory=list)
+    #: Named tests whose body no longer matches the recorded one (#1551), by
+    #: requirement. They failed although pytest passed them, so a caller
+    #: showing only PASS/FAIL owes the user the reason.
+    changed_tests: dict[str, list[str]] = field(default_factory=dict)
+    #: Named tests of a newly satisfied requirement that could not be located
+    #: statically, so have no recorded body: pytest still judges them, but a
+    #: later weakening goes unseen. Shown so a partial guard is not silent.
+    unfingerprinted: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def reason(self) -> EmptyReason:
@@ -419,6 +429,82 @@ def _run_gate(
         return GateOutcome.FAILED, str(exc)
 
 
+def _obligation_test_ids(req) -> list[str]:
+    """Every enforced pytest rule of ``req`` whose gate is one of its obligations."""
+    names: list[str] = []
+    for obl in req.obligations:
+        for name in _enforced_test_ids(req, obl.gate):
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def _test_drift(
+    req, gate: Gate, recorded: dict[str, TestFingerprint], index: TestIndex
+) -> list[tuple[str, str]]:
+    """``(name, line)`` for each of ``gate``'s named tests whose body no longer matches (#1551).
+
+    A test weakened to ``assert True`` still exists and still passes, so the
+    pytest verdict alone cannot see it. Only tests with a recorded body are
+    compared; one recorded but no longer locatable counts as changed, because
+    "cannot tell" is not evidence it is intact.
+    """
+    lines = []
+    for name in _enforced_test_ids(req, gate):
+        record = recorded.get(name)
+        if record is None:
+            continue
+        now = index.locate(name)
+        if now.fingerprint == record.fingerprint:
+            continue
+        when = record.recorded_at.date().isoformat() if record.recorded_at else "earlier"
+        what = (
+            "can no longer be located to check it is unchanged"
+            if now.fingerprint is None
+            else "has changed since it was recorded"
+        )
+        lines.append((name,
+            f"{name}: FAILED — the test {what} (recorded {when}). If the change "
+            f"is intended, record the new version: "
+            f'cf proof rebaseline {req.id} --reason "..."'
+        ))
+    return lines
+
+
+def _record_test_bodies(
+    workspace: Workspace, req, recorded: dict[str, TestFingerprint], index: TestIndex
+) -> list[str]:
+    """Record the body of each named test not yet recorded, once ``req`` passes.
+
+    Never replaces an existing record: a run that re-baselined on its own
+    would accept the very weakening it exists to catch. ``cf proof rebaseline``
+    is the one path that replaces one. Returns the names it could not locate.
+    """
+    new = []
+    missing: list[str] = []
+    for name in _obligation_test_ids(req):
+        if name in recorded:
+            continue
+        located = index.locate(name)
+        if located.fingerprint is None:
+            # Defined in a way static analysis cannot follow (generated, or a
+            # file pytest's default patterns do not name). The pytest verdict
+            # still guards it; only weakening goes unseen.
+            logger.info("REQ %s: test %s could not be fingerprinted", req.id, name)
+            missing.append(name)
+            continue
+        new.append(TestFingerprint(
+            test_id=name,
+            fingerprint=located.fingerprint,
+            files=sorted(located.files),
+            recorded_by="cf proof run",
+        ))
+    ledger.save_test_fingerprints(workspace, req.id, new)
+    for fp in new:
+        recorded[fp.test_id] = fp
+    return missing
+
+
 def _report_scope_skipped(run_id: str, skipped: list[str]) -> None:
     """Surface requirements a scoped run did not evaluate (#922).
 
@@ -570,10 +656,40 @@ def run_proof_with_diagnostics(
     # One pytest process judges every enforced rule of the run (#1485). The
     # pre-pass mirrors the loop's filters; a rule it misses is still judged
     # correctly by _run_gate on its own, only in a process of its own.
+    # Test bodies recorded when each requirement was satisfied (#1551), and the
+    # working tree's tests, scanned only if something needs them.
+    fingerprints = ledger.all_test_fingerprints(workspace)
+    index = TestIndex(Path(workspace.repo_path))
+    evidence_scope = (
+        EvidenceScope(Path(workspace.repo_path), changed_scope.files)
+        if not full and changed_scope is not None
+        else None
+    )
+    in_scope_memo: dict[str, bool] = {}
+
+    def in_scope(req) -> bool:
+        """``intersects``, widened to the requirement's own tests (#1551).
+
+        A requirement's scope is the code it protects, so a commit that only
+        deleted, skipped or weakened its test used to be out of scope for it,
+        and the pre-commit run verified nothing.
+        """
+        if full or changed_scope is None:
+            return True
+        if req.id not in in_scope_memo:
+            stored_files = [
+                f for fp in fingerprints.get(req.id, {}).values() for f in fp.files
+            ]
+            in_scope_memo[req.id] = intersects(req.scope, changed_scope) or (
+                evidence_scope is not None
+                and evidence_scope.touches(req, stored_files)
+            )
+        return in_scope_memo[req.id]
+
     batch = _PytestBatch(workspace, (
         test_id
         for req in reqs
-        if full or changed_scope is None or intersects(req.scope, changed_scope)
+        if in_scope(req)
         for obl in req.obligations
         if (gate_filter is None or obl.gate == gate_filter)
         and (enabled_gates is None or obl.gate in enabled_gates)
@@ -584,10 +700,9 @@ def run_proof_with_diagnostics(
         for req in reqs:
             # Check scope intersection (unless full mode or scope detection failed)
             # None changed_scope means "failed to detect" → run everything (fail closed)
-            if not full and changed_scope is not None:
-                if not intersects(req.scope, changed_scope):
-                    scope_skipped.append(req.id)
-                    continue
+            if not in_scope(req):
+                scope_skipped.append(req.id)
+                continue
 
             if not req.obligations:
                 diagnostics.no_obligations.append(req.id)
@@ -613,6 +728,15 @@ def run_proof_with_diagnostics(
                 # Run the gate, enforcing this requirement's evidence rules for it
                 gate_rules = [r for r in req.evidence_rules if r.gate == obl.gate]
                 outcome, output = _run_gate(workspace, obl.gate, gate_rules)
+
+                # A named test that still passes may have been weakened (#1551).
+                drift = _test_drift(req, obl.gate, fingerprints.get(req.id, {}), index)
+                if drift:
+                    changed = diagnostics.changed_tests.setdefault(req.id, [])
+                    changed.extend(name for name, _ in drift if name not in changed)
+                    lines = [line for _, line in drift]
+                    output = "\n".join([output, *lines]) if output else "\n".join(lines)
+                    outcome = GateOutcome.FAILED
 
                 # Write artifact
                 artifact_path = artifact_dir / f"{req.id}_{obl.gate.value}_{run_id}.txt"
@@ -662,6 +786,11 @@ def run_proof_with_diagnostics(
                     # mark_satisfied stamps satisfied_at, which the ledger column
                     # and the API field never carried before (#923).
                     ledger.mark_satisfied(workspace, req)
+                    missing = _record_test_bodies(
+                        workspace, req, fingerprints.setdefault(req.id, {}), index
+                    )
+                    if missing:
+                        diagnostics.unfingerprinted[req.id] = missing
                 elif req.status == ReqStatus.SATISFIED and any(
                     o == GateOutcome.FAILED for _, o in req_results
                 ):
@@ -736,3 +865,56 @@ def run_proof_with_diagnostics(
         logger.info("Proof run %s produced no results: %s", run_id, diagnostics.describe())
 
     return results, diagnostics
+
+
+@dataclass
+class RebaselineResult:
+    """What ``rebaseline_tests`` recorded, or why it recorded nothing."""
+
+    recorded: list[TestFingerprint] = field(default_factory=list)
+    #: Named tests that could not be located; when non-empty nothing was saved.
+    unlocated: list[str] = field(default_factory=list)
+
+
+def rebaseline_tests(
+    workspace: Workspace, req_id: str, *, reason: str, actor: str
+) -> RebaselineResult:
+    """Accept the current body of each of ``req_id``'s named tests (#1551).
+
+    The recorded counterpart of a waiver: changing the test that proves a
+    requirement is allowed, but only as a deliberate act with a name and a
+    reason on it. All or nothing — if one named test cannot be located, no
+    record changes, because a partial rebaseline would leave the requirement
+    failing for a reason the user believes they just resolved.
+
+    It does not change the requirement's status. The next ``cf proof run``
+    judges it against the new record.
+
+    Raises:
+        KeyError: no such requirement.
+        ValueError: an empty reason.
+    """
+    if not reason.strip():
+        raise ValueError("a reason is required")
+    req = ledger.get_requirement(workspace, req_id)
+    if req is None:
+        raise KeyError(req_id)
+    index = TestIndex(Path(workspace.repo_path))
+    result = RebaselineResult()
+    for name in _obligation_test_ids(req):
+        located = index.locate(name)
+        if located.fingerprint is None:
+            result.unlocated.append(name)
+            continue
+        result.recorded.append(TestFingerprint(
+            test_id=name,
+            fingerprint=located.fingerprint,
+            files=sorted(located.files),
+            recorded_by=actor,
+            reason=reason,
+        ))
+    if result.unlocated:
+        result.recorded = []
+        return result
+    ledger.save_test_fingerprints(workspace, req.id, result.recorded)
+    return result

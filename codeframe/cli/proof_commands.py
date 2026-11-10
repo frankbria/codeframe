@@ -598,6 +598,21 @@ def run(
             "Waive with 'cf proof waive <REQ> --reason \"...\"'."
         )
 
+    for req_id, names in diagnostics.changed_tests.items():
+        console.print(
+            f"\n[red]{escape(req_id)}:[/red] {', '.join(escape(n) for n in names)} "
+            "changed since it was recorded. Restore it, or if the change is "
+            f"intended: [bold]cf proof rebaseline {escape(req_id)} --reason \"...\"[/bold]"
+        )
+
+    for req_id, names in diagnostics.unfingerprinted.items():
+        console.print(
+            f"\n[yellow]{escape(req_id)}:[/yellow] {', '.join(escape(n) for n in names)} "
+            "could not be located statically, so a later weakening of "
+            f"{'it' if len(names) == 1 else 'them'} will not be caught (pytest still judges "
+            f"{'it' if len(names) == 1 else 'them'})."
+        )
+
     if any_failed:
         console.print("\n[red]Some requirements failed.[/red] Fix issues and re-run.")
         raise typer.Exit(1)
@@ -816,6 +831,60 @@ def waive(
     else:
         console.print(f"[red]Error:[/red] Requirement {escape(req_id)} not found.")
         raise typer.Exit(1)
+
+
+@proof_app.command("rebaseline")
+def rebaseline(
+    req_id: str = typer.Argument(help="Requirement ID whose tests changed on purpose"),
+    reason: str = typer.Option(..., "--reason", "-r", help="Why the test changed"),
+    repo_path: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Workspace path",
+    ),
+) -> None:
+    """Accept an intended change to a requirement's tests.
+
+    `cf proof run` records the body of each test a requirement names when the
+    requirement is first satisfied, and fails it if that body later changes —
+    a test weakened to `assert True` still passes, so that is the only way to
+    see it. When the change is deliberate, this records the new version with
+    your name and reason. The next `cf proof run` checks it.
+
+    Example:
+        codeframe proof rebaseline REQ-0001 --reason "Split into two cases"
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core.proof.runner import rebaseline_tests
+
+    workspace_path = repo_path or Path.cwd()
+    try:
+        workspace = get_workspace(workspace_path)
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+
+    try:
+        result = rebaseline_tests(workspace, req_id, reason=reason, actor=cli_actor())
+    except KeyError:
+        console.print(f"[red]Error:[/red] Requirement {escape(req_id)} not found.")
+        raise typer.Exit(1)
+    except ValueError as e:
+        print_error(e)
+        raise typer.Exit(1)
+
+    if result.unlocated:
+        console.print(
+            f"[red]Error:[/red] Could not locate {', '.join(escape(n) for n in result.unlocated)} "
+            f"for {escape(req_id)}. Nothing was recorded."
+        )
+        raise typer.Exit(1)
+    if not result.recorded:
+        console.print(f"{escape(req_id)} names no pytest tests; nothing to record.")
+        return
+    console.print(
+        f"[green]✓[/green] Recorded {len(result.recorded)} test(s) for {escape(req_id)}: "
+        f"{escape(reason)}"
+    )
+    console.print("  Run [bold]cf proof run[/bold] to check them.")
 
 
 @proof_app.command("export")

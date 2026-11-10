@@ -235,8 +235,28 @@ def list_blocking_requirements(
         # Filtered once, at the end, so both reasons a requirement blocks are
         # narrowed the same way. An out-of-scope requirement is irrelevant to
         # this change whether it is unproven or has tampered evidence.
+        #
+        # A requirement's own tests count as its scope too (#1551): a PR that
+        # only edits the test proving an open requirement is a change to it.
+        from codeframe.core.proof.pinned_tests import EvidenceScope
         from codeframe.core.proof.scope import intersects
 
-        blocking = [req for req in blocking if intersects(req.scope, changed_scope)]
+        # The file list is the PR's, not this checkout's diff: its revisions
+        # are not here to compare a pytest config change against.
+        evidence_scope = EvidenceScope(
+            Path(workspace.repo_path), changed_scope.files, local_diff=False
+        )
+        fingerprints = (
+            ledger.all_test_fingerprints(workspace)
+            if any(not intersects(r.scope, changed_scope) for r in blocking)
+            else {}
+        )
+        blocking = [
+            req for req in blocking
+            if intersects(req.scope, changed_scope)
+            or evidence_scope.touches(req, [
+                f for fp in fingerprints.get(req.id, {}).values() for f in fp.files
+            ])
+        ]
 
     return blocking
