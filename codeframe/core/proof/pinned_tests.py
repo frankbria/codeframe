@@ -112,6 +112,8 @@ class Collection:
     norecursedirs: Optional[tuple[str, ...]] = None
     python_files: tuple[str, ...] = _DEFAULT_PYTHON_FILES
     python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
+    #: ``pythonpath`` entries, repo-relative ("" is the root), in order.
+    pythonpath: tuple[str, ...] = ()
 
 
 def _ini_values(raw: object) -> tuple[str, ...]:
@@ -123,7 +125,10 @@ def _ini_values(raw: object) -> tuple[str, ...]:
 
 
 #: Files whose pytest section can change what a bare ``pytest`` collects.
-PYTEST_CONFIG_FILES = ("pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg")
+PYTEST_CONFIG_FILES = (
+    "pytest.toml", ".pytest.toml", "pytest.ini", ".pytest.ini",
+    "pyproject.toml", "tox.ini", "setup.cfg",
+)
 
 
 def _read_worktree(repo_root: Path) -> Callable[[str], Optional[str]]:
@@ -137,12 +142,19 @@ def _pytest_section(read: Callable[[str], Optional[str]]) -> Optional[dict]:
     """The first pytest config section in pytest's own search order, or None.
 
     Order and "first file that has a section wins" follow pytest's rootdir
-    lookup for the repo root itself: ``pytest.ini`` / ``.pytest.ini`` (which
-    win even with no section), ``pyproject.toml``'s
+    lookup for the repo root itself: pytest 9's ``pytest.toml`` /
+    ``.pytest.toml`` (a ``[pytest]`` table of native TOML values), then
+    ``pytest.ini`` / ``.pytest.ini`` (all four win even with no section),
+    ``pyproject.toml``'s
     ``[tool.pytest.ini_options]``, ``tox.ini``'s ``[pytest]``, ``setup.cfg``'s
     ``[tool:pytest]``. ``read`` returns a root file's text, or None if absent,
     so the same lookup serves the working tree and ``HEAD``.
     """
+    for name in ("pytest.toml", ".pytest.toml"):
+        text = read(name)
+        if text is not None:
+            table = tomllib.loads(text).get("pytest")
+            return dict(table) if isinstance(table, dict) else {}
     for name in ("pytest.ini", ".pytest.ini"):
         text = read(name)
         if text is not None:
@@ -194,7 +206,28 @@ def collection(repo_root: Path) -> Collection:
         norecursedirs=_ini_values(norecurse) if norecurse is not None else None,
         python_files=python_files,
         python_classes=python_classes,
+        pythonpath=_repo_paths(Path(repo_root), _ini_values(section.get("pythonpath"))),
     )
+
+
+def _repo_paths(repo_root: Path, entries: Iterable[str]) -> tuple[str, ...]:
+    """``pythonpath`` entries (relative to the config file, which is at the
+    root) as repo-relative directories. One outside the repo holds nothing we
+    could fingerprint and is dropped."""
+    out: list[str] = []
+    for entry in entries:
+        path = Path(entry)
+        if path.is_absolute():
+            try:
+                rel = path.resolve().relative_to(repo_root.resolve()).as_posix()
+            except (ValueError, OSError):
+                continue
+        else:
+            rel = posixpath.normpath(entry.replace("\\", "/"))
+        if rel == ".." or rel.startswith("../"):
+            continue
+        out.append("" if rel == "." else rel)
+    return tuple(dict.fromkeys(out))
 
 
 def enforced_test_names(req) -> list[str]:
@@ -389,10 +422,14 @@ class _Sources:
     """Cached reads of repo files, from the working tree or ``HEAD``."""
 
     def __init__(
-        self, repo_root: Path, python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES
+        self,
+        repo_root: Path,
+        python_classes: tuple[str, ...] = _DEFAULT_PYTHON_CLASSES,
+        pythonpath: tuple[str, ...] = (),
     ):
         self.root = repo_root
         self.python_classes = python_classes
+        self.pythonpath = pythonpath
         self._text: dict[tuple[str, str], Optional[str]] = {}
         self._parsed: dict[tuple[str, str], Optional[dict[str, list[_Binding]]]] = {}
 
@@ -461,8 +498,9 @@ def _module_paths(
 
     Absolute imports are tried where pytest's ``prepend`` mode makes them
     importable: the importing test module's basedir, the basedir of each
-    ``conftest.py`` above it, then the repo root and ``src/`` (rootdir
-    insertion and an installed package). So a non-package ``tests/`` that
+    ``conftest.py`` above it, then the configured ``pythonpath`` entries
+    (inserted at startup, so later prepends land ahead of them), then the
+    repo root and ``src/`` (rootdir insertion and an installed package). So a non-package ``tests/`` that
     does ``from test_original import …`` resolves to ``tests/test_original.py``.
     """
     parts = module.split(".") if module else []
@@ -478,6 +516,8 @@ def _module_paths(
             if sources is not None and sources.exists(posixpath.join(directory, "conftest.py")):
                 roots.append(_basedir(directory, sources))
             directory = posixpath.dirname(directory)
+        if sources is not None:
+            roots += list(sources.pythonpath)
         roots += ["", "src"]
         roots = list(dict.fromkeys(roots))
     out = []
@@ -521,7 +561,9 @@ class TestIndex:
     def __init__(self, repo_root: Path, sources: Optional[_Sources] = None):
         self.root = Path(repo_root)
         self.config = collection(self.root)
-        self.sources = sources or _Sources(self.root, self.config.python_classes)
+        self.sources = sources or _Sources(
+            self.root, self.config.python_classes, self.config.pythonpath
+        )
         self._files: Optional[list[str]] = None
         self._by_name: Optional[dict[str, list[str]]] = None
 
@@ -725,7 +767,8 @@ class EvidenceScope:
         """
         self.root = Path(repo_root)
         self.local_diff = local_diff
-        self.sources = _Sources(self.root, collection(self.root).python_classes)
+        config = collection(self.root)
+        self.sources = _Sources(self.root, config.python_classes, config.pythonpath)
         self.changed = {_norm(f) for f in changed_files if f}
         self.changed_py = sorted(f for f in self.changed if f.endswith(".py"))
         self.changed_conftests = [

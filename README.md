@@ -301,8 +301,10 @@ Published deliberately. Extended rather than quietly shortened.
   rewriting the test a requirement names fails it. Weakening a helper or fixture
   that test calls does not, and a `conftest.py` change re-runs the requirement but
   passes if the test still passes. The fingerprint covers the files a bare
-  `pytest` collects (`testpaths`, `norecursedirs` and `python_files` are read;
-  a conftest's `collect_ignore` is not, so a same-named test there still counts).
+  `pytest` collects (`testpaths`, `norecursedirs`, `python_files` and
+  `pythonpath` are read, from any config file pytest 9 reads, `pytest.toml`
+  included; a conftest's `collect_ignore` is not, so a same-named test there
+  still counts).
   A test generated at collection time, or bound through an import CodeFRAME
   cannot follow (a `sys.path` change in a conftest, say), cannot be
   fingerprinted; the pytest verdict still guards it, but a weakened body there

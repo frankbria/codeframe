@@ -440,6 +440,8 @@ def _two_test_totals(root: Path) -> Path:
 
 
 @pytest.mark.parametrize("config_file, body", [
+    ("pytest.toml", '[pytest]\ntestpaths = ["tests"]\n'),
+    (".pytest.toml", '[pytest]\ntestpaths = ["tests"]\n'),
     ("pytest.ini", "[pytest]\ntestpaths = tests\n"),
     ("pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'),
     ("tox.ini", "[pytest]\ntestpaths = tests\n"),
@@ -590,6 +592,37 @@ def test_an_import_from_a_sibling_in_a_non_package_tests_dir_is_followed(tmp_pat
     assert TestIndex(tmp_path).locate("test_unit_req_0001").fingerprint != first.fingerprint
 
 
+@pytest.mark.parametrize("config_file, body", [
+    ("pytest.ini", "[pytest]\npythonpath = selected\n"),
+    ("pytest.toml", '[pytest]\npythonpath = ["selected"]\n'),
+])
+def test_a_configured_pythonpath_decides_which_module_an_import_reaches(
+    tmp_path, config_file, body
+):
+    """pytest puts ``pythonpath`` ahead of the root, so ``selected/checks.py``
+    is the module run, not a same-named one at the root."""
+    (tmp_path / config_file).write_text(body)
+    (tmp_path / "selected").mkdir()
+    used = tmp_path / "selected" / "checks.py"
+    used.write_text("def check():\n    assert 2 * 3 == 6\n")
+    (tmp_path / "checks.py").write_text("def check():\n    assert 1\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_pin.py").write_text("from checks import check as test_total\n")
+    first = TestIndex(tmp_path).locate("test_total")
+
+    assert first.fingerprint
+    assert "selected/checks.py" in first.files
+    # The recorded files are what a later scoped run checks the change against.
+    from types import SimpleNamespace
+    req = SimpleNamespace(
+        id="REQ-0001",
+        evidence_rules=[SimpleNamespace(test_id="test_total", must_pass=True)],
+    )
+    assert EvidenceScope(tmp_path, ["selected/checks.py"]).touches(req, first.files)
+    used.write_text("def check():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first.fingerprint
+
+
 def test_an_import_from_beside_a_parent_conftest_is_followed(tmp_path):
     (tmp_path / "tests" / "unit").mkdir(parents=True)
     (tmp_path / "tests" / "conftest.py").write_text("")
@@ -688,9 +721,13 @@ def test_a_pin_follows_the_module_python_imports_not_every_candidate(tmp_path):
     assert TestIndex(tmp_path).locate("test_unit_req_0001").fingerprint == first.fingerprint
 
 
-def test_a_pytest_config_change_that_drops_the_tests_fails_them(shop):
+@pytest.mark.parametrize("config_file, body", [
+    ("pytest.ini", "[pytest]\npython_functions = never_collect\n"),
+    ("pytest.toml", '[pytest]\npython_functions = ["never_collect"]\n'),
+])
+def test_a_pytest_config_change_that_drops_the_tests_fails_them(shop, config_file, body):
     """A config-only edit can stop pytest collecting a test; the run must look."""
-    (Path(shop.repo_path) / "pytest.ini").write_text("[pytest]\npython_functions = never_collect\n")
+    (Path(shop.repo_path) / config_file).write_text(body)
 
     results, diagnostics = run_proof_with_diagnostics(shop)
 
