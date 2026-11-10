@@ -326,6 +326,10 @@ def test_the_run_command_names_the_changed_test(shop):
 
 
 def test_the_merge_gate_counts_an_open_requirements_tests_as_its_scope(shop):
+    """`cf pr merge` usually runs on a checkout of the base branch, where the
+    PR's edit is absent: the tree here is clean and only the PR's file list
+    names the test file. The base branch's copy still binds the test's name,
+    which is what puts the requirement in scope."""
     ledger.reopen_requirement(shop, "REQ-0001")
     changed = RequirementScope(files=["tests/test_shipping.py"])
 
@@ -373,3 +377,37 @@ def test_a_relative_import_and_a_test_method_are_followed(tmp_path):
         "class TestM:\n    def test_m(self):\n        assert True\n"
     )
     assert TestIndex(tmp_path).locate("test_m").fingerprint != first
+
+
+def test_async_and_decorated_tests_are_fingerprinted_stably(tmp_path):
+    """Pins `_canonical`'s cross-version claim on the node shapes it rebuilds."""
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_shapes.py"
+    source = (
+        "import pytest\n\n\n"
+        "@pytest.mark.parametrize('n', [1, 2])\n"
+        "async def test_async(n):\n"
+        "    \"\"\"Docstring.\"\"\"\n"
+        "    assert n > 0\n"
+    )
+    test_file.write_text(source)
+    first = TestIndex(tmp_path).locate("test_async").fingerprint
+    assert first and first.startswith("v1:")
+
+    test_file.write_text(source.replace("Docstring.", "Other words."))
+    assert TestIndex(tmp_path).locate("test_async").fingerprint == first
+
+    test_file.write_text(source.replace("[1, 2]", "[1]"))
+    assert TestIndex(tmp_path).locate("test_async").fingerprint != first
+
+    test_file.write_text(source.replace("assert n > 0", "assert True"))
+    assert TestIndex(tmp_path).locate("test_async").fingerprint != first
+
+
+def test_a_name_that_only_appears_inside_a_longer_one_is_not_located(tmp_path):
+    """The one-pass index matches whole identifiers, as a binding must."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("def test_total_wrong():\n    assert 1\n")
+
+    assert TestIndex(tmp_path).locate("test_total").fingerprint is None
+    assert TestIndex(tmp_path).locate("test_total_wrong").fingerprint

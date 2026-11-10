@@ -303,7 +303,12 @@ Published deliberately. Extended rather than quietly shortened.
   passes if the test still passes. A test pytest's default file patterns would not
   find, or one generated at collection time, cannot be fingerprinted; the pytest
   verdict still guards it. A requirement satisfied before this check existed gets
-  its fingerprint at its next passing run.
+  its fingerprint at its next passing run, and that first record trusts the body
+  the test has then. `cf proof rebaseline` is an audited path, not a barrier: it
+  records who accepted a changed test and why, like a waiver, and anyone who can
+  run `cf` can run it. The merge gate counts a test-only change only for a
+  requirement that is already open; catching the edit itself is the pre-commit
+  check's job.
 - **You write the tests for five of the nine gates.** `UNIT`, `CONTRACT` and `SEC`
   run on their own. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` generate named stubs
   you implement. `MANUAL` is never machine-verified.

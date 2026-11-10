@@ -32,6 +32,7 @@ import hashlib
 import logging
 import os
 import posixpath
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -196,9 +197,15 @@ class _Sources:
                 ["git", "show", f"HEAD:{rel}"],
                 cwd=self.root, capture_output=True, timeout=30,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug("git show HEAD:%s failed: %s", rel, exc)
             return None
         if result.returncode != 0:
+            # Usual for a file new since HEAD; logged for "why is this not in scope?"
+            logger.debug(
+                "git show HEAD:%s exited %d: %s", rel, result.returncode,
+                result.stderr.decode("utf-8", errors="replace").strip(),
+            )
             return None
         return result.stdout.decode("utf-8", errors="replace")
 
@@ -261,6 +268,9 @@ class Located:
     files: set[str] = field(default_factory=set)
 
 
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
 class TestIndex:
     """The working tree's test files, scanned once and only on demand."""
 
@@ -270,6 +280,7 @@ class TestIndex:
         self.root = Path(repo_root)
         self.sources = sources or _Sources(self.root)
         self._files: Optional[list[str]] = None
+        self._by_name: Optional[dict[str, list[str]]] = None
 
     def test_files(self) -> list[str]:
         if self._files is None:
@@ -287,15 +298,29 @@ class TestIndex:
             self._files = found
         return self._files
 
+    def files_naming(self, name: str) -> list[str]:
+        """Test files in which ``name`` appears as an identifier.
+
+        Built in one pass over every test file, so locating N names costs one
+        scan plus N lookups rather than N scans (a ratchet ledger can name
+        thousands of tests). A file that never spells the name cannot bind it.
+        """
+        if self._by_name is None:
+            by_name: dict[str, list[str]] = {}
+            for rel in self.test_files():
+                text = self.sources.text(rel, "worktree")
+                if text is None:
+                    continue
+                for ident in set(_IDENT.findall(text)):
+                    by_name.setdefault(ident, []).append(rel)
+            self._by_name = by_name
+        return self._by_name.get(name, [])
+
     def locate(self, name: str) -> Located:
         located = Located()
         digests: list[str] = []
         resolvable = True
-        for rel in self.test_files():
-            text = self.sources.text(rel, "worktree")
-            # Cheap prefilter: a file that never spells the name cannot bind it.
-            if text is None or name not in text:
-                continue
+        for rel in self.files_naming(name):
             for binding in (self.sources.bindings(rel, "worktree") or {}).get(name, []):
                 ok = _follow(self.sources, rel, binding, ("worktree",), located.files, digests, 0)
                 resolvable = resolvable and ok

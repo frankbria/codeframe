@@ -437,8 +437,8 @@ def _obligation_test_ids(req) -> list[str]:
 
 def _test_drift(
     req, gate: Gate, recorded: dict[str, TestFingerprint], index: TestIndex
-) -> list[str]:
-    """Lines for each of ``gate``'s named tests whose body no longer matches (#1551).
+) -> list[tuple[str, str]]:
+    """``(name, line)`` for each of ``gate``'s named tests whose body no longer matches (#1551).
 
     A test weakened to ``assert True`` still exists and still passes, so the
     pytest verdict alone cannot see it. Only tests with a recorded body are
@@ -459,11 +459,11 @@ def _test_drift(
             if now.fingerprint is None
             else "has changed since it was recorded"
         )
-        lines.append(
+        lines.append((name,
             f"{name}: FAILED — the test {what} (recorded {when}). If the change "
             f"is intended, record the new version: "
             f'cf proof rebaseline {req.id} --reason "..."'
-        )
+        ))
     return lines
 
 
@@ -726,11 +726,9 @@ def run_proof_with_diagnostics(
                 drift = _test_drift(req, obl.gate, fingerprints.get(req.id, {}), index)
                 if drift:
                     changed = diagnostics.changed_tests.setdefault(req.id, [])
-                    changed.extend(
-                        line.split(":", 1)[0] for line in drift
-                        if line.split(":", 1)[0] not in changed
-                    )
-                    output = "\n".join([output, *drift]) if output else "\n".join(drift)
+                    changed.extend(name for name, _ in drift if name not in changed)
+                    lines = [line for _, line in drift]
+                    output = "\n".join([output, *lines]) if output else "\n".join(lines)
                     outcome = GateOutcome.FAILED
 
                 # Write artifact
