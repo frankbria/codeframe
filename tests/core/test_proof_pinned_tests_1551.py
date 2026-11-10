@@ -635,3 +635,41 @@ def test_the_run_command_names_a_test_it_cannot_guard(shop):
 
     assert result.exit_code == 0, result.output
     assert "REQ-0003" in result.output and "could not be located statically" in result.output
+
+
+def test_a_unittest_testcase_whatever_its_name_is_located_and_in_scope(tmp_path):
+    """pytest collects ``class Totals(unittest.TestCase)`` despite its name."""
+    from types import SimpleNamespace
+
+    from codeframe.core.proof.pinned_tests import EvidenceScope
+
+    (tmp_path / "tests").mkdir()
+    test_file = tmp_path / "tests" / "test_totals.py"
+    source = (
+        "import unittest\n\n\nclass Totals(unittest.TestCase):\n"
+        "    def test_total(self):\n        self.assertEqual(2 + 2, 4)\n"
+    )
+    test_file.write_text(source)
+    first = TestIndex(tmp_path).locate("test_total")
+
+    assert first.fingerprint
+    test_file.write_text(source.replace("self.assertEqual(2 + 2, 4)", "assert True"))
+    assert TestIndex(tmp_path).locate("test_total").fingerprint != first.fingerprint
+
+    req = SimpleNamespace(
+        id="REQ-0001", evidence_rules=[SimpleNamespace(test_id="test_total", must_pass=True)]
+    )
+    assert EvidenceScope(tmp_path, ["tests/test_totals.py"]).touches(req)
+
+
+def test_a_pin_follows_the_module_python_imports_not_every_candidate(tmp_path):
+    """tests/ is first on sys.path for tests/test_pin.py; a root copy is unused."""
+    (tmp_path / "pytest.ini").write_text("[pytest]\ntestpaths = tests\n")
+    _non_package_pin(tmp_path)
+    unused = tmp_path / "test_original.py"
+    unused.write_text("def test_original():\n    assert 1\n")
+    first = TestIndex(tmp_path).locate("test_unit_req_0001")
+
+    assert "test_original.py" not in first.files
+    unused.write_text("def test_original():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_unit_req_0001").fingerprint == first.fingerprint

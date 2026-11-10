@@ -224,7 +224,13 @@ def _bindings(
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.setdefault(stmt.name, []).append(_Binding(node=stmt))
             elif isinstance(stmt, ast.ClassDef):
-                if _matches_prefix_or_glob(stmt.name, python_classes):
+                # pytest also collects a unittest.TestCase subclass whatever
+                # its name, and a base may be a TestCase two modules away, so
+                # any class with a real base counts: wider, never narrower.
+                has_base = any(
+                    not (isinstance(b, ast.Name) and b.id == "object") for b in stmt.bases
+                )
+                if has_base or _matches_prefix_or_glob(stmt.name, python_classes):
                     visit(stmt.body, True)
             elif isinstance(stmt, ast.ImportFrom) and not in_class:
                 for alias in stmt.names:
@@ -391,8 +397,9 @@ def _module_paths(
             continue
         if stem + ".py" in out:
             continue
-        out.append(stem + ".py")
+        # In one directory a package wins over a module of the same name.
         out.append(posixpath.join(stem, "__init__.py"))
+        out.append(stem + ".py")
     return out
 
 
@@ -554,15 +561,22 @@ def _follow(
         return False
     reached = False
     for target in _module_paths(rel, binding.module, binding.level, sources):
+        found = False
         for version in versions:
             target_bindings = sources.bindings(target, version)
             if target_bindings is None:
                 continue
+            found = True
             files.add(target)
             for nxt in target_bindings.get(binding.orig, []):
                 if _follow(sources, target, nxt, versions, files, digests, hops + 1):
                     reached = True
             break  # the first version that has the module answers for it
+        if found and digests is not None:
+            # A fingerprint follows the module Python would import: the first
+            # candidate on the path. A scope check (no digests) keeps going,
+            # since naming one file too many only costs a re-run.
+            break
     return reached
 
 
