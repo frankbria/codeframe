@@ -488,3 +488,15 @@ def test_an_unreadable_config_indexes_the_whole_tree(tmp_path):
     example.write_text("def test_total():\n    assert True\n")
 
     assert TestIndex(tmp_path).locate("test_total").fingerprint != first
+
+
+def test_a_file_named_in_testpaths_is_collected_whatever_its_name(tmp_path):
+    """pytest collects a file listed in testpaths even if python_files skips it."""
+    (tmp_path / "pytest.ini").write_text("[pytest]\ntestpaths = checks.py\n")
+    checks = tmp_path / "checks.py"
+    checks.write_text("def test_c():\n    assert 3 > 2\n")
+    first = TestIndex(tmp_path).locate("test_c")
+
+    assert first.fingerprint and first.files == {"checks.py"}
+    checks.write_text("def test_c():\n    assert True\n")
+    assert TestIndex(tmp_path).locate("test_c").fingerprint != first.fingerprint

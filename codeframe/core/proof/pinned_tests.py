@@ -86,6 +86,10 @@ class Collection:
     ``None`` when unset, meaning only :data:`_SKIP_DIRS` applies; pytest's own
     default list is narrower than that set plus dot-directories, so leaving it
     out walks *more*, never less.
+
+    Not exact, and only ever wider than pytest: ``addopts`` (``--ignore``,
+    ``--ignore-glob``, ``--deselect``) and a conftest's ``collect_ignore`` are
+    not read, so a same-named function in a file they exclude is still hashed.
     """
 
     testpaths: tuple[str, ...] = ()
