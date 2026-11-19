@@ -32,7 +32,7 @@ dependencies = [
     # The adapter migrated to 1.x in #1170, so the floor moved with it. The
     # MAJOR ceiling stays: it is the lesson, not the version. Do not make this
     # floor-only again — raise it only together with a 2.x migration.
-    "anthropic>=1.0,<2",
+    "anthropic>=1.0,<3",
     # Runtime, not dev (#910): `cf review`'s security leg shells out to bandit,
     # and when it was missing the scan silently produced no findings — so every
     # clean `pip install` scored 100 and reported "approved" without ever
