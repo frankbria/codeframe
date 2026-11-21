@@ -55,7 +55,7 @@ dependencies = [
     # existed because typer 0.19 imported a click API that click 9 removes) is
     # gone. Raise this only together with a run of tests/cli against it.
     # click is no longer pinned: nothing here imports it.
-    "typer>=0.27,<0.28",
+    "typer>=0.27,<0.29",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "requests>=2.33.0",
