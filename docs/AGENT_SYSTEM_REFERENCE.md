@@ -41,9 +41,11 @@ with `CODEFRAME_<PURPOSE>_MODEL`):
 - **GENERATION** → `claude-haiku-4-5` (fast/cheap)
 
 **Request shape follows the model (#1267).** Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5
-and Fable reject `temperature` and a fixed `thinking.budget_tokens` with a 400, so
-the Anthropic adapter sends them only to an allowlist of families that take them
-(Claude 3, Claude 4 up to 4.6) and asks everything else for adaptive thinking. On
+and Fable reject a fixed `thinking.budget_tokens` with a 400, so the Anthropic
+adapter sends one only to an allowlist of families that take it (Claude 3,
+Claude 4 up to 4.6) and asks everything else for adaptive thinking. Since the
+anthropic 2.x migration (API `2026-10-21`) every model rejects `temperature`,
+`top_p` and `top_k`, so the Anthropic adapter sends none of them to any model. On
 OpenAI itself the adapter sends `max_completion_tokens`, and drops `temperature`
 for reasoning models (o-series, gpt-5); ollama/vllm/compatible keep `max_tokens`.
 Wire tests: `tests/adapters/test_request_shape_1267.py`.

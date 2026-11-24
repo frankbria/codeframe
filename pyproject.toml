@@ -29,10 +29,14 @@ dependencies = [
     # an SDK our adapter could not call — published 0.9.2 was dead on arrival on
     # exactly the path the README tells a new user to take. The lockfile hid it:
     # CI resolved 0.70.0 and never saw 1.x.
-    # The adapter migrated to 1.x in #1170, so the floor moved with it. The
-    # MAJOR ceiling stays: it is the lesson, not the version. Do not make this
-    # floor-only again — raise it only together with a 2.x migration.
-    "anthropic>=1.0,<2",
+    # The adapter migrated to 1.x in #1170 and to 2.x in Nov 2026 (#1549), so
+    # the floor moved with it each time. 2.x pins API version 2026-10-21, which
+    # rejects temperature/top_p/top_k on every model, so the adapter now sends
+    # none; tests/adapters/test_sdk_kwargs_guard_614.py trips if the SDK starts
+    # sending an API version the request shape has not been checked against.
+    # The MAJOR ceiling stays: it is the lesson, not the version. Do not make
+    # this floor-only again — raise it only together with a 3.x migration.
+    "anthropic>=2.0,<3",
     # Runtime, not dev (#910): `cf review`'s security leg shells out to bandit,
     # and when it was missing the scan silently produced no findings — so every
     # clean `pip install` scored 100 and reported "approved" without ever
