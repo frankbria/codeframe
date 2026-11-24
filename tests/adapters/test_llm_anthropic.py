@@ -11,22 +11,20 @@ pytestmark = pytest.mark.v2
 
 
 def _provider() -> AnthropicProvider:
-    # A model that still takes sampling parameters (#1267). The default moved to
-    # claude-sonnet-5-5 (#1348), which rejects temperature, so the adapter sends
-    # none for it; these tests are about temperature=0.0 not being dropped.
+    # A legacy-shape model (#1267): it took temperature until the SDK 2.x
+    # migration, so it is where a regression back to sending one would show.
     return AnthropicProvider(
         api_key="test-key", model_selector=ModelSelector(execution_model="claude-haiku-4-5")
     )
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
-def test_complete_passes_temperature_unconditionally(monkeypatch, temperature):
-    """temperature=0.0 must reach the API, not be dropped (#767, #1170).
+def test_complete_sends_no_temperature(monkeypatch, temperature):
+    """No temperature, top-level or in ``extra_body``, for any model.
 
-    On the 1.x SDK the kwarg is gone from ``Messages.create()``, so the adapter
-    sends it in ``extra_body`` — which the SDK merges into the request JSON
-    verbatim. The invariant is unchanged: 0.0 is a request for deterministic
-    sampling, never "unset".
+    anthropic 2.x pins API 2026-10-21, which rejects sampling parameters on
+    every model; this retired the #767 "0.0 must reach the API" invariant for
+    Anthropic. The wire-level version is in test_sdk_kwargs_guard_614.py.
     """
     provider = _provider()
     fake_client = MagicMock()
@@ -39,13 +37,13 @@ def test_complete_passes_temperature_unconditionally(monkeypatch, temperature):
     provider.complete(messages=[{"role": "user", "content": "hi"}], temperature=temperature)
 
     kwargs = fake_client.messages.create.call_args.kwargs
-    assert "temperature" not in kwargs, "1.x rejects the top-level kwarg"
-    assert kwargs["extra_body"]["temperature"] == temperature
+    assert "temperature" not in kwargs
+    assert "temperature" not in kwargs.get("extra_body", {})
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
-async def test_async_complete_passes_temperature_unconditionally(monkeypatch, temperature):
-    """Async path must also pass temperature=0.0 (#767, #1170)."""
+async def test_async_complete_sends_no_temperature(monkeypatch, temperature):
+    """Async path must not send temperature either (API 2026-10-21)."""
 
     async def _create(**kwargs):
         _create.captured = kwargs
@@ -64,12 +62,12 @@ async def test_async_complete_passes_temperature_unconditionally(monkeypatch, te
     )
 
     assert "temperature" not in _create.captured
-    assert _create.captured["extra_body"]["temperature"] == temperature
+    assert "temperature" not in _create.captured.get("extra_body", {})
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
-def test_stream_passes_temperature_unconditionally(temperature):
-    """Sync streaming path must also pass temperature=0.0 (#767, #1170)."""
+def test_stream_sends_no_temperature(temperature):
+    """Sync streaming path must not send temperature either (API 2026-10-21)."""
     provider = _provider()
     fake_client = MagicMock()
     stream_cm = MagicMock()
@@ -80,5 +78,5 @@ def test_stream_passes_temperature_unconditionally(temperature):
     list(provider.stream(messages=[{"role": "user", "content": "hi"}], temperature=temperature))
 
     kwargs = fake_client.messages.stream.call_args.kwargs
-    assert "temperature" not in kwargs, "1.x rejects the top-level kwarg"
-    assert kwargs["extra_body"]["temperature"] == temperature
+    assert "temperature" not in kwargs
+    assert "temperature" not in kwargs.get("extra_body", {})

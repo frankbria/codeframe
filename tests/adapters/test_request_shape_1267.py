@@ -1,7 +1,9 @@
 """Current-generation models accept our request shape (#1267).
 
-Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5 and Fable reject ``temperature`` (and a
-``thinking.budget_tokens``) with a 400; OpenAI's gpt-5 and o-series reject
+Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5 and Fable reject a ``thinking.budget_tokens``
+with a 400. Since the anthropic 2.x migration (API 2026-10-21) every model
+rejects ``temperature``, so the adapter sends it to none. OpenAI's gpt-5 and
+o-series reject
 ``max_tokens`` and ``temperature``. Every test here drives the real installed SDK
 through a mock transport and decodes the JSON body it would have sent — the
 same standard as the #767 wire tests in ``test_sdk_kwargs_guard_614.py``.
@@ -18,13 +20,14 @@ from codeframe.adapters.llm.base import ModelSelector
 
 pytestmark = pytest.mark.v2
 
-#: Reject sampling and thinking budgets (claude-api skill, model table 2026-09).
+#: Reject thinking budgets (claude-api skill, model table 2026-09).
 NO_SAMPLING = [
     "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7",
     "claude-sonnet-5-5", "claude-sonnet-5", "claude-fable-5-1", "claude-fable-5",
     "anthropic.claude-opus-5-5",  # Bedrock prefix
 ]
-#: Still accept both (the current defaults among them).
+#: Still take a fixed thinking budget. They also took temperature until API
+#: 2026-10-21, so they are the regression cases for the sampling tests.
 SAMPLING = [
     "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-6",
     "claude-sonnet-4-5-20250929", "claude-opus-4-1", "claude-opus-4-20250514",
@@ -76,7 +79,9 @@ def _anthropic(model: str, captured: dict, sse: bool = False):
 
 
 class TestAnthropicSampling:
-    @pytest.mark.parametrize("model", NO_SAMPLING)
+    """API 2026-10-21 rejects sampling parameters on every model."""
+
+    @pytest.mark.parametrize("model", NO_SAMPLING + SAMPLING)
     def test_complete_omits_temperature(self, model):
         captured: dict = {}
         _anthropic(model, captured).complete(
@@ -84,16 +89,7 @@ class TestAnthropicSampling:
         )
         assert "temperature" not in captured["body"], captured["body"]
 
-    @pytest.mark.parametrize("model", SAMPLING)
-    def test_complete_keeps_temperature(self, model):
-        """The #767 invariant: temperature=0.0 still reaches models that take it."""
-        captured: dict = {}
-        _anthropic(model, captured).complete(
-            messages=[{"role": "user", "content": "hi"}], temperature=0.0
-        )
-        assert captured["body"]["temperature"] == 0.0
-
-    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-opus-5"])
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-haiku-4-5"])
     def test_async_complete_omits_temperature(self, model):
         captured: dict = {}
         asyncio.run(
@@ -103,13 +99,13 @@ class TestAnthropicSampling:
         )
         assert "temperature" not in captured["body"]
 
-    @pytest.mark.parametrize("model, sent", [("claude-opus-5", False), ("claude-sonnet-4-5", True)])
-    def test_stream_follows_the_same_rule(self, model, sent):
+    @pytest.mark.parametrize("model", ["claude-opus-5", "claude-sonnet-4-5"])
+    def test_stream_follows_the_same_rule(self, model):
         captured: dict = {}
         list(_anthropic(model, captured, sse=True).stream(
             messages=[{"role": "user", "content": "hi"}], temperature=0.0
         ))
-        assert ("temperature" in captured["body"]) is sent
+        assert "temperature" not in captured["body"]
 
 
 class TestAnthropicThinking:

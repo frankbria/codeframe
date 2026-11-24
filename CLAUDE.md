@@ -180,8 +180,9 @@ path the README documents while every gate was green:
 
 So: **a floor-only pin on an SDK is a latent DOA release.** Cap the major on
 anything whose call signature we depend on, and remember the lockfile hides it.
-The adapter now runs on `anthropic` 1.x and the pin is `>=1.0,<2` (#1170) — the
-*ceiling* is the lesson, not the version, so do not make it floor-only again.
+The adapter now runs on `anthropic` 2.x and the pin is `>=2.0,<3` (1.x in
+#1170, 2.x since Nov 2026) — the *ceiling* is the lesson, not the version, so do
+not make it floor-only again.
 `tests/adapters/test_sdk_kwargs_guard_614.py` catches the drift once it reaches
 the lock. Before that, the **Unlocked Resolution** workflow
 (`.github/workflows/unlocked-resolution.yml`, #1169) catches it: it resolves the
@@ -194,15 +195,29 @@ via `scheduled-failure-issue.yml` (#1239, #1242), like the other two daily
 checks. `tests/ci/test_unlocked_resolution_guard_1169.py`
 pins those properties.
 
-#1170 moved where the risk lives, so the #614 guard now carries two halves. The
-signature check stayed, but it got weaker: `temperature` was a real bet on the
-signature, while `extra_body` — where `temperature` travels on 1.x — is generic
-SDK plumbing that will never vanish. The second half is a wire-level test that
-drives the installed client through a mock transport and decodes the request
-body, so it fails if `extra_body` ever stops being merged into the request. It
-lives in that same file deliberately: this file and
-`test_model_defaults_guard_1112.py` are what Unlocked Resolution runs, and a
-guard that the unlocked job cannot see is not guarding the install path.
+#1170 moved where the risk lives, so the #614 guard carries two halves. The
+signature check stayed, but it is weak: `extra_body` is generic SDK plumbing
+that will never vanish. The second half is wire-level tests that drive the
+installed client through a mock transport and decode the request.
+
+**The 2.x break was not a signature change** — and that is the lesson of it.
+anthropic 2.x pins API version `2026-10-21`, which rejects `temperature`,
+`top_p` and `top_k` with a 400 on *every* model, including the Claude 3 / 4.x
+families that used to take them. No signature check could see that, and the
+1.x wire test *asserted* `temperature` reached the body, so a relock would have
+passed CI and every legacy-model call would have 400'd. So the adapter now
+sends no sampling parameter at all (the #767 "0.0 means deterministic"
+invariant is retired for Anthropic; there is no way left to ask for it), and
+the wire tests assert two things: no sampling parameter reaches the body on
+`create` or `stream`, and the SDK sends an `anthropic-version` listed in
+`CHECKED_API_VERSIONS`. That second one is a deliberate tripwire: when an SDK
+release moves the API version, it fails first and tells you to read that
+version's changelog before adding it. 2.x also authenticates with
+`Authorization: Bearer` instead of `X-Api-Key` — relevant to a `base_url`
+gateway (#780) that only forwards one of them. Both tests live in that same
+file deliberately: this file and `test_model_defaults_guard_1112.py` are what
+Unlocked Resolution runs, and a guard that the unlocked job cannot see is not
+guarding the install path.
 
 That job needs no API key and takes seconds, so it is not a replacement for the
 cold-start harness: it checks the *resolution*, the harness checks the

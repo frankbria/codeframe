@@ -21,34 +21,49 @@ from codeframe.adapters.llm.base import (
 if TYPE_CHECKING:
     from codeframe.core.credentials import CredentialManager
 
-# Model families that still accept sampling parameters and a fixed thinking
-# budget: every Claude 3, and Claude 4 up to 4.6. Opus 4.7+, Opus 5/5.5,
-# Sonnet 5/5.5 and Fable reject both with a 400 (#1267). An allowlist, because
-# each new generation has rejected them, so an unknown or future model gets the
-# current shape (no temperature, adaptive thinking). The flip side is that a
-# spelling of an OLD model this misses would get adaptive thinking, which
-# pre-4.6 models reject — so the pattern takes every spelling we know of: a
-# Bedrock "anthropic." prefix, a "-YYYYMMDD" date, a Vertex "@" snapshot, and a
-# gateway's dotted "claude-sonnet-4.5".
+# Model families that still accept a fixed thinking budget: every Claude 3, and
+# Claude 4 up to 4.6. Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5 and Fable reject it
+# and take adaptive thinking instead (#1267). An allowlist, because each new
+# generation has rejected the old shape, so an unknown or future model gets the
+# current one. The flip side is that a spelling of an OLD model this misses
+# would get adaptive thinking, which pre-4.6 models reject — so the pattern
+# takes every spelling we know of: a Bedrock "anthropic." prefix, a "-YYYYMMDD"
+# date, a Vertex "@" snapshot, and a gateway's dotted "claude-sonnet-4.5".
 _LEGACY_SHAPE = re.compile(
     r"claude-(?:3\b|(?:opus|sonnet|haiku)-4(?:[.-][0-6](?!\d)|-\d{8}|@|$))"
 )
 
 
 def _accepts_sampling(model: str) -> bool:
-    """Whether ``model`` takes ``temperature`` and ``thinking.budget_tokens``."""
+    """Whether ``model`` takes ``thinking.budget_tokens`` (the legacy shape).
+
+    The name predates the SDK 2.x migration, when this also decided whether
+    ``temperature`` was sent. It no longer does: see ``_sampling``.
+    """
     return bool(_LEGACY_SHAPE.search(model))
 
 
 def _sampling(model: str, temperature: float) -> dict:
-    """The ``extra_body`` for a request: temperature only where it is accepted.
+    """The ``extra_body`` for a request: always empty since the SDK 2.x migration.
 
-    temperature=0.0 is a real request for deterministic sampling, not "unset"
-    (#767), so it is sent whenever the model takes it. It rides in extra_body
-    because anthropic 1.x dropped the sampling kwargs from the typed signature
-    (#1170); the SDK merges extra_body into the request JSON verbatim.
+    anthropic 2.x pins API version 2026-10-21, under which ``temperature``,
+    ``top_p`` and ``top_k`` are rejected with a 400 on *every* model — the
+    Claude 3 / 4.x models that used to take them included. So no sampling
+    parameter is sent at all, and ``temperature`` is accepted by the provider
+    methods only to keep the ``LLMProvider`` interface stable for callers and
+    the other providers.
+
+    This retires the #767 invariant ("temperature=0.0 is a real request for
+    deterministic sampling") for Anthropic: there is no way left to ask for
+    it. The OpenAI-compatible provider still honours it.
+
+    Kept as a function (rather than inlining ``{}``) so the wire guard in
+    test_sdk_kwargs_guard_614.py has one place that decides what goes in
+    ``extra_body``, and so a future API version that accepts a sampling
+    control again has an obvious home.
     """
-    return {"temperature": temperature} if _accepts_sampling(model) else {}
+    del model, temperature  # accepted for interface stability; see above
+    return {}
 
 
 class AnthropicProvider(LLMProvider):
@@ -137,7 +152,8 @@ class AnthropicProvider(LLMProvider):
             purpose: Purpose of call (for model selection)
             tools: Available tools for the model to use
             max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
+            temperature: Ignored. API 2026-10-21 rejects sampling
+                parameters on every model (see ``_sampling``).
             system: System prompt
 
         Returns:
@@ -381,7 +397,8 @@ class AnthropicProvider(LLMProvider):
             messages: Conversation messages
             purpose: Purpose of call (for model selection)
             max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
+            temperature: Ignored. API 2026-10-21 rejects sampling
+                parameters on every model (see ``_sampling``).
             system: System prompt
 
         Yields:

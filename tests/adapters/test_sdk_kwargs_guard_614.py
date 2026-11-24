@@ -6,31 +6,39 @@
 published 0.9.2 was dead on arrival — the same shape of failure as #1112, and
 invisible to CI, which resolves the locked 0.70.0 and never sees 1.x.
 
-Since #1170 the project is *on* 1.x and `temperature` travels in `extra_body`
-instead — so it is no longer in this set. That is the point of keeping the guard
-keyed to what the adapter actually sends: the set moves with the adapter, and the
-assertion keeps meaning "the installed SDK accepts every kwarg we send".
+Since #1170 the project was on 1.x with `temperature` travelling in `extra_body`;
+since the 2.x migration it sends no sampling parameter at all, because 2.x pins
+API version 2026-10-21, which rejects them on every model. That is the point of
+keeping the guard keyed to what the adapter actually sends: the set moves with
+the adapter, and the assertion keeps meaning "the installed SDK accepts every
+kwarg we send".
 
 This asserts the contract that actually matters: every keyword the adapter passes
 unconditionally is one the *installed* SDK accepts. It fails the moment the lock
 moves to an SDK whose signature has drifted, whatever the pin says.
 
 Covers both entry points the adapter uses. `messages.stream()` is a separate
-signature from `messages.create()`, and the sync `stream()` also sends
-`temperature` in `extra_body`, so it was exposed to this same break.
+signature from `messages.create()`, so one passing says nothing about the other.
 
 Deliberately NOT asserted: `betas` and `thinking`, which `async_stream` sends only
 for interleaved extended thinking and already guards with a `TypeError` fallback
 (#766). Those are allowed to be absent; the kwargs below are not.
 
-The signature check alone got weaker at #1170: `extra_body` is generic SDK
-plumbing that will never vanish, whereas `temperature` was a real bet on the
-signature. So the wire-level test at the bottom carries the other half — that
-`extra_body` is still *merged into the request body*, which is the only reason
-routing `temperature` through it is acceptable. Both live here because this file
-(with test_model_defaults_guard_1112.py) is what the Unlocked Resolution workflow
-runs against a no-lockfile resolution of the pyproject ranges — the one place
-that sees what a fresh `uv tool install` would get.
+The signature check alone is weak: `extra_body` is generic SDK plumbing that
+will never vanish. The wire-level tests at the bottom carry the other half, and
+since the 2.x migration they assert two things over the real installed client:
+
+- no sampling parameter (`temperature`, `top_p`, `top_k`) reaches the request
+  body on any entry point, for any model — the Claude 3 / 4.x models that used
+  to take them included, because API 2026-10-21 rejects them on all of them;
+- the SDK still sends an `anthropic-version` the request shape has been
+  checked against. A new SDK minor that moves the API version is exactly the
+  silent change that broke 0.9.2, so this trips first and names what to check.
+
+Both live here because this file (with test_model_defaults_guard_1112.py) is
+what the Unlocked Resolution workflow runs against a no-lockfile resolution of
+the pyproject ranges — the one place that sees what a fresh `uv tool install`
+would get.
 """
 
 import inspect
@@ -40,8 +48,17 @@ import pytest
 
 from codeframe.adapters.llm.base import ModelSelector
 
-#: A model on the legacy request shape, which takes temperature (#1267).
-SAMPLING_MODEL = "claude-haiku-4-5"
+#: A model on the legacy request shape (#1267): it took temperature before the
+#: 2.x migration, so it is the case most likely to regress into sending one.
+LEGACY_MODEL = "claude-haiku-4-5"
+
+#: API versions the adapter's request shape has been checked against. Adding one
+#: is a claim that someone read its changelog for request-shape changes
+#: (sampling, thinking, content blocks) and updated the adapter to match.
+CHECKED_API_VERSIONS = {"2026-10-21"}
+
+#: Rejected by API 2026-10-21 on every model; none may reach the wire.
+SAMPLING_PARAMS = ("temperature", "top_p", "top_k")
 
 pytestmark = pytest.mark.v2
 
@@ -84,58 +101,88 @@ def test_async_client_accepts_every_kwarg_the_adapter_sends(call):
     )
 
 
-@pytest.mark.parametrize("temperature", [0.0, 0.7])
-def test_temperature_reaches_the_request_body_over_the_wire(temperature):
-    """The #767 invariant, asserted where it actually matters: the HTTP body.
+def _message_reply(request):
+    import httpx2
 
-    The kwarg tests in test_llm_anthropic.py mock ``messages.create`` and so
-    only prove what the adapter *hands* the SDK. This one drives the real
-    installed client through a mock transport and decodes the JSON it would
-    have put on the wire — so it fails if ``extra_body`` ever stops being
-    merged into the request, which is the half the signature check above can
-    no longer see.
-    """
+    return httpx2.Response(
+        200,
+        json={
+            "id": "msg_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-5",
+            "content": [{"type": "text", "text": "ok"}],
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+    )
+
+
+def _provider_over(handler, model=None):
+    """An AnthropicProvider whose sync client is the real SDK on a mock transport."""
     import anthropic
     import httpx2
 
-    captured = {}
-
-    def handler(request):
-        captured["body"] = json.loads(request.content)
-        return httpx2.Response(
-            200,
-            json={
-                "id": "msg_1",
-                "type": "message",
-                "role": "assistant",
-                "model": "claude-sonnet-4-5",
-                "content": [{"type": "text", "text": "ok"}],
-                "stop_reason": "end_turn",
-                "stop_sequence": None,
-                "usage": {"input_tokens": 1, "output_tokens": 1},
-            },
-        )
-
     from codeframe.adapters.llm.anthropic import AnthropicProvider
 
-    # Pinned to a model that still takes sampling parameters: the default
-    # (claude-sonnet-5-5 since #1348) rejects temperature, so the adapter
-    # rightly sends none, which is the inverse test below.
-    provider = AnthropicProvider(
-        api_key="test-key", model_selector=ModelSelector(execution_model=SAMPLING_MODEL)
-    )
+    selector = ModelSelector(execution_model=model) if model else None
+    provider = AnthropicProvider(api_key="test-key", model_selector=selector)
     provider._client = anthropic.Anthropic(
         api_key="test-key",
         http_client=anthropic.DefaultHttpxClient(
             transport=httpx2.MockTransport(handler)
         ),
     )
+    return provider
 
-    provider.complete(
+
+@pytest.mark.parametrize("temperature", [0.0, 0.7])
+def test_no_sampling_parameter_reaches_the_request_body(temperature):
+    """API 2026-10-21 rejects sampling parameters on every model.
+
+    The kwarg tests in test_llm_anthropic.py mock ``messages.create`` and so
+    only prove what the adapter *hands* the SDK. This one drives the real
+    installed client through a mock transport and decodes the JSON it would
+    have put on the wire. It uses a legacy model on purpose: those took
+    ``temperature`` until the 2.x migration (#767), so they are where a
+    regression would reappear.
+    """
+    captured = {}
+
+    def handler(request):
+        captured["body"] = json.loads(request.content)
+        return _message_reply(request)
+
+    _provider_over(handler, LEGACY_MODEL).complete(
         messages=[{"role": "user", "content": "hi"}], temperature=temperature
     )
 
-    assert captured["body"]["temperature"] == temperature
+    sent = set(SAMPLING_PARAMS) & set(captured["body"])
+    assert not sent, f"API 2026-10-21 returns 400 on {sorted(sent)}"
+
+
+def test_the_sdk_sends_an_api_version_we_have_checked():
+    """The tripwire for the next silent request-shape change.
+
+    anthropic 2.x moved to API 2026-10-21, which turned every ``temperature``
+    the adapter sent into a 400 without any signature change the guards above
+    could see. If a later SDK release sends another version, this fails before
+    a fresh install does: read that version's changelog, fix the adapter, then
+    add it to ``CHECKED_API_VERSIONS``.
+    """
+    captured = {}
+
+    def handler(request):
+        captured["version"] = request.headers.get("anthropic-version")
+        return _message_reply(request)
+
+    _provider_over(handler).complete(messages=[{"role": "user", "content": "hi"}])
+
+    assert captured["version"] in CHECKED_API_VERSIONS, (
+        f"installed anthropic SDK sends anthropic-version {captured['version']!r}; "
+        f"the adapter's request shape was checked against {sorted(CHECKED_API_VERSIONS)}."
+    )
 
 
 #: A minimal well-formed SSE stream, enough for ``messages.stream()`` to build a
@@ -172,16 +219,13 @@ _STREAM_SSE = "\n".join(
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
-def test_temperature_reaches_the_stream_request_body_too(temperature):
+def test_no_sampling_parameter_reaches_the_stream_request_body_either(temperature):
     """Same wire assertion for ``messages.stream()``, which is its own method.
 
     ``stream()`` is a different SDK entry point from ``create()`` with its own
-    signature and its own manager, so "create merges extra_body" is not
-    evidence that stream does. Without this, the sync streaming path would rest
-    on exactly the signature-only check this file already says proves nothing
-    for a generic kwarg like ``extra_body``.
+    signature and its own manager, so "create sends no temperature" is not
+    evidence that stream does not.
     """
-    import anthropic
     import httpx2
 
     captured = {}
@@ -194,66 +238,29 @@ def test_temperature_reaches_the_stream_request_body_too(temperature):
             content=_STREAM_SSE.encode(),
         )
 
-    from codeframe.adapters.llm.anthropic import AnthropicProvider
-
-    # Pinned to a model that still takes sampling parameters: the default
-    # (claude-sonnet-5-5 since #1348) rejects temperature, so the adapter
-    # rightly sends none, which is the inverse test below.
-    provider = AnthropicProvider(
-        api_key="test-key", model_selector=ModelSelector(execution_model=SAMPLING_MODEL)
-    )
-    provider._client = anthropic.Anthropic(
-        api_key="test-key",
-        http_client=anthropic.DefaultHttpxClient(
-            transport=httpx2.MockTransport(handler)
-        ),
-    )
-
     chunks = list(
-        provider.stream(
+        _provider_over(handler, LEGACY_MODEL).stream(
             messages=[{"role": "user", "content": "hi"}], temperature=temperature
         )
     )
 
     assert chunks == ["hi"], chunks
-    assert captured["body"]["temperature"] == temperature
+    sent = set(SAMPLING_PARAMS) & set(captured["body"])
+    assert not sent, f"API 2026-10-21 returns 400 on {sorted(sent)}"
 
 
 def test_the_default_model_sends_no_temperature_over_the_wire():
-    """claude-sonnet-5-5 (the default since #1348) returns 400 on a temperature.
-
-    The other half of the wire guard: extra_body must be merged when sampling is
-    accepted, and must carry no temperature when the model rejects it.
-    """
-    import anthropic
-    import httpx2
-
+    """claude-sonnet-5-5 (the default since #1348) rejected temperature even
+    before the 2.x migration; it must still get none."""
     captured = {}
 
     def handler(request):
         captured["body"] = json.loads(request.content)
-        return httpx2.Response(
-            200,
-            json={
-                "id": "msg_1",
-                "type": "message",
-                "role": "assistant",
-                "model": "claude-sonnet-5-5",
-                "content": [{"type": "text", "text": "hi"}],
-                "stop_reason": "end_turn",
-                "usage": {"input_tokens": 1, "output_tokens": 1},
-            },
-        )
+        return _message_reply(request)
 
-    from codeframe.adapters.llm.anthropic import AnthropicProvider
-
-    provider = AnthropicProvider(api_key="test-key")
-    provider._client = anthropic.Anthropic(
-        api_key="test-key",
-        http_client=anthropic.DefaultHttpxClient(transport=httpx2.MockTransport(handler)),
+    _provider_over(handler).complete(
+        messages=[{"role": "user", "content": "hi"}], temperature=0.7
     )
-
-    provider.complete(messages=[{"role": "user", "content": "hi"}], temperature=0.7)
 
     assert captured["body"]["model"] == "claude-sonnet-5-5"
     assert "temperature" not in captured["body"]
